@@ -1,0 +1,15 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "dock_bars",
+      "probability": 0.95
+    },
+    {
+      "type": "predicate",
+      "name": "ebike_colour",
+      "probability": 1
+    }
+  ]
+}

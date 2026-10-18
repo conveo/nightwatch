@@ -1,0 +1,115 @@
+{
+  "updated": "2026-10-18T22:23:19.000Z",
+  "docks": [
+    {
+      "id": "412c1416-d15b-4e6a-9691-da4c3cc0d0d2",
+      "name": "Bleecker St & Crosby St",
+      "lat": 40.72615604980408,
+      "lon": -73.99510189890862,
+      "capacity": 63,
+      "bikes": 58,
+      "ebikes": 42,
+      "docks": 3,
+      "renting": true
+    },
+    {
+      "id": "4168e5a4-c7ec-4045-bfc8-84ac5edbe845",
+      "name": "E 1 St & Bowery",
+      "lat": 40.72486122254819,
+      "lon": -73.99213135242462,
+      "capacity": 44,
+      "bikes": 36,
+      "ebikes": 13,
+      "docks": 0,
+      "renting": true
+    },
+    {
+      "id": "53e30d38-a110-42b4-a8f9-ca801a847ac7",
+      "name": "Greene St & Prince St",
+      "lat": 40.72511734422387,
+      "lon": -73.99930492043495,
+      "capacity": 45,
+      "bikes": 41,
+      "ebikes": 31,
+      "docks": 0,
+      "renting": true
+    },
+    {
+      "id": "66db2fd0-0aca-11e7-82f6-3863bb44ef7c",
+      "name": "Cleveland Pl & Spring St",
+      "lat": 40.722103786686034,
+      "lon": -73.99724900722504,
+      "capacity": 33,
+      "bikes": 18,
+      "ebikes": 10,
+      "docks": 10,
+      "renting": true
+    },
+    {
+      "id": "66db3a1e-0aca-11e7-82f6-3863bb44ef7c",
+      "name": "Great Jones St",
+      "lat": 40.72743423,
+      "lon": -73.99379025,
+      "capacity": 23,
+      "bikes": 20,
+      "ebikes": 11,
+      "docks": 0,
+      "renting": true
+    },
+    {
+      "id": "66db4158-0aca-11e7-82f6-3863bb44ef7c",
+      "name": "Mott St & Prince St",
+      "lat": 40.72317958,
+      "lon": -73.99480012,
+      "capacity": 39,
+      "bikes": 24,
+      "ebikes": 9,
+      "docks": 15,
+      "renting": true
+    },
+    {
+      "id": "66db6d40-0aca-11e7-82f6-3863bb44ef7c",
+      "name": "Mercer St & Spring St",
+      "lat": 40.72362738,
+      "lon": -73.99949601,
+      "capacity": 67,
+      "bikes": 66,
+      "ebikes": 55,
+      "docks": 0,
+      "renting": true
+    },
+    {
+      "id": "66ddd369-0aca-11e7-82f6-3863bb44ef7c",
+      "name": "Mercer St & Bleecker St",
+      "lat": 40.72706363348306,
+      "lon": -73.99662137031554,
+      "capacity": 67,
+      "bikes": 62,
+      "ebikes": 48,
+      "docks": 0,
+      "renting": true
+    },
+    {
+      "id": "66de6dc1-0aca-11e7-82f6-3863bb44ef7c",
+      "name": "Lafayette St & Jersey St",
+      "lat": 40.72430527,
+      "lon": -73.99600983,
+      "capacity": 60,
+      "bikes": 54,
+      "ebikes": 47,
+      "docks": 1,
+      "renting": true
+    },
+    {
+      "id": "af72781c-fe0b-4b73-a7df-201f9780ea9c",
+      "name": "W Broadway & W Houston St",
+      "lat": 40.726378,
+      "lon": -74.000472,
+      "capacity": 50,
+      "bikes": 43,
+      "ebikes": 12,
+      "docks": 4,
+      "renting": true
+    }
+  ]
+}
