@@ -1,0 +1,38 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "launcher_mesh_mark",
+      "probability": 0.98
+    },
+    {
+      "type": "score",
+      "name": "panel_matches_reference",
+      "score": 1.91,
+      "probabilities": [
+        {
+          "value": 0,
+          "label": "different",
+          "probability": 0
+        },
+        {
+          "value": 1,
+          "label": "loosely similar",
+          "probability": 0.09
+        },
+        {
+          "value": 2,
+          "label": "close",
+          "probability": 0.91
+        },
+        {
+          "value": 3,
+          "label": "very close",
+          "probability": 0
+        }
+      ],
+      "confidence": 0.91
+    }
+  ]
+}
