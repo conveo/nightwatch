@@ -14,7 +14,7 @@ import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
 import { inflateRawSync } from "node:zlib"
-import { AREA, FIXTURE_RADIUS_M, inArea } from "../src/constants.ts"
+import { AREA, FIXTURE_RADIUS_M } from "../src/constants.ts"
 import { toLocal, type LatLon } from "../src/geo.ts"
 import {
   project,
@@ -200,43 +200,98 @@ export function dropBacktracks(points: LatLon[]): LatLon[] {
   return out
 }
 
-// The part of a line inside a region: from its first point inside to its last, plus
-// the points where it crosses the boundary, so lines run right up to the edge.
-export function clipLine(points: LatLon[], inside: (p: LatLon) => boolean): LatLon[] {
-  const first = points.findIndex(inside)
-  if (first < 0) return []
-  const last = points.findLastIndex(inside)
-  const out = points.slice(first, last + 1)
-  if (first > 0) out.unshift(crossing(points[first]!, points[first - 1]!, inside))
-  if (last < points.length - 1) out.push(crossing(points[last]!, points[last + 1]!, inside))
-  return out
+// What the data is clipped to. GTFS points can be hundreds of metres apart on a
+// straight run, so a line can cross a region with no point inside it: clipping works
+// on segments, not points.
+export type Region = {
+  contains(p: LatLon): boolean
+  // The part of the segment a-b inside the region, as fractions [from, to] of its
+  // length, or null when it misses.
+  clip(a: LatLon, b: LatLon): [number, number] | null
 }
 
-// Bisect between a point inside and one outside for where the line leaves the region.
-function crossing(from: LatLon, to: LatLon, inside: (p: LatLon) => boolean): LatLon {
-  const at = (f: number) => ({ lat: from.lat + (to.lat - from.lat) * f, lon: from.lon + (to.lon - from.lon) * f })
-  let lo = 0
-  let hi = 1
-  for (let i = 0; i < 30; i++) {
-    const mid = (lo + hi) / 2
-    if (inside(at(mid))) lo = mid
-    else hi = mid
+// A lat/lon box such as AREA. Straight in lat/lon is straight in scene metres (the
+// projection is linear), so Liang-Barsky works on the degrees directly.
+export function boxRegion(box: typeof AREA): Region {
+  return {
+    contains: (p) => p.lat >= box.south && p.lat <= box.north && p.lon >= box.west && p.lon <= box.east,
+    clip(a, b) {
+      let from = 0
+      let to = 1
+      const dLon = b.lon - a.lon
+      const dLat = b.lat - a.lat
+      for (const [p, q] of [
+        [-dLon, a.lon - box.west],
+        [dLon, box.east - a.lon],
+        [-dLat, a.lat - box.south],
+        [dLat, box.north - a.lat],
+      ] as const) {
+        if (p === 0) {
+          if (q < 0) return null
+        } else if (p < 0) from = Math.max(from, q / p)
+        else to = Math.min(to, q / p)
+      }
+      // A segment that only touches the edge is not inside it.
+      return from < to ? [from, to] : null
+    },
   }
-  return at(lo)
 }
 
-export function buildSubwayData(feed: Feed, inside: (p: LatLon) => boolean, clip: SubwayData["clip"]): SubwayData {
+// A circle of radiusM metres around the venue (the fixture's region).
+export function circleRegion(radiusM: number): Region {
+  return {
+    contains(p) {
+      const { x, z } = toLocal(p)
+      return Math.hypot(x, z) <= radiusM
+    },
+    clip(a, b) {
+      const p = toLocal(a)
+      const q = toLocal(b)
+      const dx = q.x - p.x
+      const dz = q.z - p.z
+      // |p + t(q - p)| = r, a quadratic in t.
+      const A = dx * dx + dz * dz
+      const B = 2 * (p.x * dx + p.z * dz)
+      const C = p.x * p.x + p.z * p.z - radiusM * radiusM
+      if (A === 0) return C <= 0 ? [0, 1] : null
+      const disc = B * B - 4 * A * C
+      if (disc < 0) return null
+      const from = Math.max((-B - Math.sqrt(disc)) / (2 * A), 0)
+      const to = Math.min((-B + Math.sqrt(disc)) / (2 * A), 1)
+      return from < to ? [from, to] : null
+    },
+  }
+}
+
+// The part of a line inside a region: from where its first segment enters to where
+// its last one leaves, with every point between, so lines run right up to the edge
+// and a line that briefly leaves and comes back stays one line.
+export function clipLine(points: LatLon[], region: Region): LatLon[] {
+  if (points.length < 2) return points.filter((p) => region.contains(p))
+  const spans = points.slice(1).map((b, i) => region.clip(points[i]!, b))
+  const first = spans.findIndex((s) => s != null)
+  if (first < 0) return []
+  const last = spans.findLastIndex((s) => s != null)
+  const at = (i: number, f: number): LatLon => {
+    const a = points[i]!
+    const b = points[i + 1]!
+    return { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f }
+  }
+  return [at(first, spans[first]![0]), ...points.slice(first + 1, last + 1), at(last, spans[last]![1])]
+}
+
+export function buildSubwayData(feed: Feed, region: Region, clip: SubwayData["clip"]): SubwayData {
   const shapes: SubwayShape[] = []
   for (const [id, raw] of [...feed.shapes].sort((a, b) => a[0].localeCompare(b[0]))) {
     const route = feed.shapeRoute.get(id)
     if (route == null) continue
-    const points = clipLine(dropBacktracks(raw), inside).map((p): [number, number] => [round6(p.lat), round6(p.lon)])
+    const points = clipLine(dropBacktracks(raw), region).map((p): [number, number] => [round6(p.lat), round6(p.lon)])
     if (points.length < 2) continue
     const path = toPath(points)
     const stops = [...(feed.shapeStops.get(id) ?? [])]
       .flatMap((sid) => {
         const station = feed.stations.get(sid)
-        if (station == null || !inside(station)) return []
+        if (station == null || !region.contains(station)) return []
         return [{ id: sid, d: Math.round(project(path, toLocal(station)).d * 10) / 10 }]
       })
       .sort((a, b) => a.d - b.d)
@@ -245,7 +300,7 @@ export function buildSubwayData(feed: Feed, inside: (p: LatLon) => boolean, clip
 
   const routeIds = new Set(shapes.map((s) => s.route))
   const stops: SubwayStop[] = [...feed.stations.values()]
-    .filter((s) => inside(s) && feed.stationRoutes.has(s.id))
+    .filter((s) => region.contains(s) && feed.stationRoutes.has(s.id))
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((s) => ({
       id: s.id,
@@ -338,13 +393,9 @@ async function main(): Promise<void> {
     const kb = (Buffer.byteLength(text) / 1024).toFixed(0)
     console.log(`${path}: ${data.routes.length} routes, ${data.shapes.length} shapes, ${data.stops.length} stations, ${kb} KB`)
   }
-  write("data/subway.json", buildSubwayData(feed, inArea, { area: AREA }))
+  write("data/subway.json", buildSubwayData(feed, boxRegion(AREA), { area: AREA }))
   if (values.fixture) {
-    const near = (p: LatLon) => {
-      const { x, z } = toLocal(p)
-      return Math.hypot(x, z) <= FIXTURE_RADIUS_M
-    }
-    write("public/fixtures/subway.json", buildSubwayData(feed, near, { radiusM: FIXTURE_RADIUS_M }))
+    write("public/fixtures/subway.json", buildSubwayData(feed, circleRegion(FIXTURE_RADIUS_M), { radiusM: FIXTURE_RADIUS_M }))
   }
 }
 

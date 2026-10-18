@@ -5,7 +5,9 @@ import { test } from "node:test"
 import { deflateRawSync } from "node:zlib"
 import { Raycaster, Vector3, type Mesh, type MeshStandardMaterial } from "three"
 import {
+  boxRegion,
   buildSubwayData,
+  circleRegion,
   clipLine,
   dropBacktracks,
   parseColor,
@@ -75,19 +77,53 @@ test("shape points are ordered by shape_pt_sequence, not file order", () => {
 })
 
 test("a line leaving the region is cut where it crosses the boundary", () => {
-  const inside = (p: { lat: number; lon: number }) => p.lat <= 40.5
+  const box = boxRegion({ south: 40, north: 40.5, west: -74.5, east: -73.5 })
   const clipped = clipLine(
     [
-      { lat: 40.0, lon: -74 },
+      { lat: 40.1, lon: -74 },
       { lat: 40.4, lon: -74 },
       { lat: 40.6, lon: -74 },
       { lat: 40.8, lon: -74 },
     ],
-    inside,
+    box,
   )
   assert.equal(clipped.length, 3)
-  assert.ok(Math.abs(clipped[2]!.lat - 40.5) < 1e-6)
-  assert.deepEqual(clipLine([{ lat: 41, lon: -74 }], inside), [])
+  assert.ok(Math.abs(clipped[2]!.lat - 40.5) < 1e-9)
+  assert.deepEqual(clipLine([{ lat: 41, lon: -74 }], box), [])
+  assert.deepEqual(clipLine([{ lat: 40.2, lon: -74 }], box), [{ lat: 40.2, lon: -74 }])
+})
+
+test("a segment crossing the region with both ends outside is kept", () => {
+  // 500 m west to 500 m east of the venue, through the 400 m fixture circle.
+  const circle = circleRegion(400)
+  const [w, e] = [toLatLon({ x: -500, z: 0 }), toLatLon({ x: 500, z: 0 })]
+  const across = clipLine([w, e], circle).map((p) => toLocal(p))
+  assert.equal(across.length, 2)
+  assert.ok(Math.abs(across[0]!.x + 400) < 0.01 && Math.abs(across[1]!.x - 400) < 0.01)
+  // The same across a corner of a box: in through the west side, out through the north.
+  const box = boxRegion({ south: 40, north: 40.5, west: -74.5, east: -73.5 })
+  const corner = clipLine(
+    [
+      { lat: 40.2, lon: -74.7 },
+      { lat: 40.6, lon: -74.3 },
+    ],
+    box,
+  )
+  assert.equal(corner.length, 2)
+  assert.ok(Math.abs(corner[0]!.lon + 74.5) < 1e-9 && Math.abs(corner[0]!.lat - 40.4) < 1e-9)
+  assert.ok(Math.abs(corner[1]!.lon + 74.4) < 1e-9 && Math.abs(corner[1]!.lat - 40.5) < 1e-9)
+  // A segment that passes by is not kept.
+  assert.deepEqual(clipLine([toLatLon({ x: -500, z: 450 }), toLatLon({ x: 500, z: 450 })], circle), [])
+  assert.deepEqual(
+    clipLine(
+      [
+        { lat: 40.7, lon: -74.7 },
+        { lat: 40.7, lon: -73.3 },
+      ],
+      box,
+    ),
+    [],
+  )
 })
 
 test("a shape's out-and-back excursion is dropped, the rest kept", () => {
@@ -132,8 +168,7 @@ function tinyFeed(): Record<string, string> {
 test("a feed becomes routes, shapes with their stations, and stations with their routes", () => {
   const files = tinyFeed()
   const feed = readFeed((name) => files[name] ?? assert.fail(`no ${name}`))
-  const near = (p: { lat: number; lon: number }) => Math.hypot(toLocal(p).x, toLocal(p).z) <= 1000
-  const data = buildSubwayData(feed, near, { radiusM: 1000 })
+  const data = buildSubwayData(feed, circleRegion(1000), { radiusM: 1000 })
 
   assert.deepEqual(data.feed, { publisher: "MTA", version: "v1", start: "20260101", end: "20261231" })
   // Only routes with a shape in the region; the 6 has none (its shape is the 6X's).
