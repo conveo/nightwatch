@@ -1,4 +1,15 @@
-import { BoxGeometry, Color, Group, InstancedMesh, Matrix4, MeshStandardMaterial, type Raycaster } from "three"
+import {
+  BoxGeometry,
+  Color,
+  EdgesGeometry,
+  Group,
+  InstancedMesh,
+  LineBasicMaterial,
+  LineSegments,
+  Matrix4,
+  MeshStandardMaterial,
+  type Raycaster,
+} from "three"
 import type { CitibikeDock, CitibikeSnapshot } from "../../server/routes/citibike.ts"
 import { toLocal } from "../geo.ts"
 import type { Layer, LayerContext } from "./types.ts"
@@ -7,7 +18,8 @@ import type { Layer, LayerContext } from "./types.ts"
 // bikes in Citi Bike blue, e-bikes stacked on top in green. A dock with no bike to
 // rent keeps a short grey stub, so it still shows where it is. Fixture and recorded
 // mode draw public/fixtures/citibike.json; live mode reads /api/citibike (the
-// server reads the feed) and refreshes every 30 s. `pick` answers "dock:<station id>".
+// server reads the feed) and refreshes every 30 s. `pick` answers "dock:<station id>",
+// and the selected dock gets a white outline.
 
 export const METRES_PER_BIKE = 1
 export const BAR_WIDTH_M = 8
@@ -34,9 +46,11 @@ export function barSegments(dock: CitibikeDock): [classic: BarSegment, ebike: Ba
   ]
 }
 
+// For the HUD. Like the bars, it counts only bikes at docks that are renting.
 export function summarize(docks: CitibikeDock[]): string {
-  const bikes = docks.reduce((n, d) => n + d.bikes, 0)
-  const ebikes = docks.reduce((n, d) => n + d.ebikes, 0)
+  const renting = docks.filter((d) => d.renting)
+  const bikes = renting.reduce((n, d) => n + d.bikes, 0)
+  const ebikes = renting.reduce((n, d) => n + d.ebikes, 0)
   const fmt = (n: number) => n.toLocaleString("en-US")
   return `${fmt(docks.length)} Citi Bike docks · ${fmt(bikes)} bikes (${fmt(ebikes)} e-bikes)`
 }
@@ -61,18 +75,19 @@ export function createCitibikeLayer(): Layer {
   let lastLoad = 0
   let loading = false
 
-  function paint(): void {
-    if (mesh == null) return
-    const colour = new Color()
-    docks.forEach((dock, i) => {
-      const highlight = dock.id === selected
-      barSegments(dock).forEach((segment, j) => {
-        colour.set(segment.colour)
-        if (highlight) colour.lerp(new Color(0xffffff), 0.55)
-        mesh!.setColorAt(i * 2 + j, colour)
-      })
-    })
-    if (mesh.instanceColor != null) mesh.instanceColor.needsUpdate = true
+  // Drawn around the selected dock's bar, a little larger than the bar.
+  const outline = new LineSegments(new EdgesGeometry(box), new LineBasicMaterial({ color: 0xffffff }))
+  outline.visible = false
+  group.add(outline)
+
+  function placeOutline(): void {
+    const dock = docks.find((d) => d.id === selected)
+    outline.visible = dock != null
+    if (dock == null) return
+    const [classic, ebike] = barSegments(dock)
+    const { x, z } = toLocal(dock)
+    outline.scale.set(BAR_WIDTH_M + 3, classic.height + ebike.height + 3, BAR_WIDTH_M + 3)
+    outline.position.set(x, 0, z)
   }
 
   function draw(next: CitibikeSnapshot): void {
@@ -83,16 +98,18 @@ export function createCitibikeLayer(): Layer {
     }
     mesh = new InstancedMesh(box, material, docks.length * 2)
     const matrix = new Matrix4()
+    const colour = new Color()
     docks.forEach((dock, i) => {
       const { x, z } = toLocal(dock)
       barSegments(dock).forEach((segment, j) => {
         matrix.makeScale(BAR_WIDTH_M, segment.height, BAR_WIDTH_M).setPosition(x, segment.bottom, z)
         mesh!.setMatrixAt(i * 2 + j, matrix)
+        mesh!.setColorAt(i * 2 + j, colour.set(segment.colour))
       })
     })
     mesh.computeBoundingSphere()
     group.add(mesh)
-    paint()
+    placeOutline()
   }
 
   async function refresh(): Promise<void> {
@@ -126,7 +143,7 @@ export function createCitibikeLayer(): Layer {
     },
     select(id) {
       selected = id?.startsWith("dock:") ? id.slice("dock:".length) : null
-      paint()
+      placeOutline()
     },
   }
 }
