@@ -10,7 +10,7 @@ import {
   MeshStandardMaterial,
   type Raycaster,
 } from "three"
-import { SUBWAY_DEPTH_M } from "../constants.ts"
+import { SUBWAY_DEPTH_M, type AREA } from "../constants.ts"
 import { toLocal, type Local } from "../geo.ts"
 import type { Layer, LayerContext } from "./types.ts"
 
@@ -62,7 +62,7 @@ export type SubwayShape = {
 export type SubwayData = {
   feed: { publisher: string; version: string; start: string; end: string }
   // What the lines were clipped to: the whole AREA, or a radius around the venue.
-  clip: { area: { south: number; north: number; west: number; east: number } } | { radiusM: number }
+  clip: { area: typeof AREA } | { radiusM: number }
   routes: SubwayRoute[]
   shapes: SubwayShape[]
   stops: SubwayStop[]
@@ -166,8 +166,9 @@ export function project(path: Path, p: Local): { d: number; offset: number } {
 
 // Many shapes are variants of one line: the other direction a few metres away, short
 // turns, branches that share a trunk. Drawing every one would multiply the geometry
-// for nothing, so per route a shape is drawn only if it adds track that the shapes
-// already drawn do not cover. The longest go first.
+// for nothing, so per route a shape is drawn only if more than 5% of it runs where no
+// drawn shape does (within about one cell). The longest go first. The data keeps
+// every shape; this only decides what is drawn.
 export function distinctLines(paths: Path[], cellM = 10): Path[] {
   const covered = new Set<string>()
   const cell = (x: number, z: number) => `${Math.floor(x / cellM)},${Math.floor(z / cellM)}`
@@ -207,7 +208,12 @@ export function tubeGeometry(lines: Local[][], y: number, radius = TUBE_RADIUS_M
   const normals: number[] = []
   const indices: number[] = []
   for (const line of lines) {
-    const points = line.filter((p, i) => i === 0 || Math.hypot(p.x - line[i - 1]!.x, p.z - line[i - 1]!.z) > 0.01)
+    // Repeated points have no direction; drop each one that sits on the last kept point.
+    const points: Local[] = []
+    for (const p of line) {
+      const last = points.at(-1)
+      if (last == null || Math.hypot(p.x - last.x, p.z - last.z) > 0.01) points.push(p)
+    }
     if (points.length < 2) continue
     const base = positions.length / 3
     for (let i = 0; i < points.length; i++) {
@@ -349,6 +355,8 @@ export function createSubwayLayer(load: (ctx: LayerContext) => Promise<SubwayDat
         })
         stations.instanceMatrix.needsUpdate = true
         if (stations.instanceColor != null) stations.instanceColor.needsUpdate = true
+        // Picking tests the cached bounds first; a grown marker must still be hit.
+        stations.computeBoundingSphere()
       }
     },
   }
