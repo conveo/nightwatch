@@ -1,0 +1,64 @@
+{
+  "context": "A design review in four images. The two references are screenshots of an in-app reviewer component. The two candidates show a reviewer overlay restyled to look like it, drawn over nyc-live, a dark 3D map app. Judge only the overlay's look: shapes, layout, typography and colours. Ignore the map behind the overlay and differences in the wording or content of labels.",
+  "references": [
+    {
+      "name": "launcher",
+      "caption": "Reference A: the in-app reviewer, closed: its launcher button.",
+      "sha256": "240067db4acef6f96c359c9f8704093712ee150cd95c81ece1099b8d94ca7c1e"
+    },
+    {
+      "name": "panel",
+      "caption": "Reference B: the in-app reviewer, open: its sidebar on the test plan tab.",
+      "sha256": "83ba6f307766467d871c6bb335950701281e9cabf2463aac3edba7e5620292c6"
+    }
+  ],
+  "shots": [
+    {
+      "name": "launcher",
+      "caption": "Candidate A: the restyled overlay, closed, over nyc-live.",
+      "path": "test/fixtures/t10-launcher.png"
+    },
+    {
+      "name": "panel",
+      "caption": "Candidate B: the restyled overlay with its panel open, over nyc-live.",
+      "path": "test/fixtures/t10-panel.png"
+    }
+  ],
+  "look": {
+    "files": [
+      "src/client/styles.ts",
+      "src/client/annotate.ts",
+      "src/client/mark.ts",
+      "src/client/icons.ts"
+    ],
+    "sha256": "b95875e276a9cbef0908c3eb9ef1cd229a85d66ae546f3ba808307f3a0da65f4"
+  },
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "launcher_mesh_mark",
+      "instructions": "Candidate A shows a round launcher button in the bottom-right corner, and the button carries the same mark as the launcher in Reference A: thin orange orbit rings with small dots around a glowing core.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "panel_matches_reference",
+      "instructions": "How closely do the layout and colours of the overlay panel in Candidate B match the sidebar in Reference B? Judge structure, spacing, typography and colours.",
+      "levels": [
+        {
+          "label": "different"
+        },
+        {
+          "label": "loosely similar"
+        },
+        {
+          "label": "close"
+        },
+        {
+          "label": "very close"
+        }
+      ],
+      "minLevel": "close"
+    }
+  ]
+}
