@@ -1,0 +1,24 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, rendered in a web browser.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "venue_marker",
+      "instructions": "A red pin stands on a red ring near the centre of the view.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "title",
+      "instructions": "The top-left corner shows the title 'lower Manhattan, live'.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "instructions": "How readable is the on-screen text when projected for an audience of 100 people?",
+      "levels": [{ "label": "poor" }, { "label": "acceptable" }, { "label": "good" }],
+      "minLevel": "acceptable"
+    }
+  ]
+}

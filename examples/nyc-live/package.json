@@ -1,0 +1,31 @@
+{
+  "name": "nyc-live",
+  "version": "0.1.0",
+  "description": "Lower Manhattan, live, in 3D: the example app a nightwatch run builds overnight.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "browser": "node scripts/browser.ts",
+    "shot": "node scripts/shot.ts",
+    "check:visual": "node scripts/check-visual.ts"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/three": "0.186.0",
+    "typescript": "6.0.3",
+    "vite": "7.3.7"
+  }
+}

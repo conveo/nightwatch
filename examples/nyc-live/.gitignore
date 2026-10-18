@@ -1,0 +1,4 @@
+# Downloaded city data. Only the download scripts and small fixtures are committed.
+data/
+# Screenshots taken by `pnpm shot`.
+shots/
