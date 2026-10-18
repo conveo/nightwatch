@@ -1,4 +1,6 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
+import { statSync } from "node:fs"
 import { test } from "node:test"
 import { VENUE, toLatLon } from "../src/geo.ts"
 import {
@@ -113,12 +115,26 @@ test("the Brooklyn Bridge preset looks at the middle of the bridge, side on", ()
   close(Math.abs(turn(pose.heading, 126)), 90, 5, "angle to the bridge")
 })
 
-test("From above looks almost straight down, with the avenues up the screen", () => {
+test("From above looks almost straight down on the island, from the Battery to Union Square", () => {
   const pose = viewToPose(preset("above").view)
   assert.ok(pose.pitch > 85, `pitch ${pose.pitch}`)
-  close(pose.heading, 29, 1, "heading")
-  // High enough to see from the Battery to 14th Street.
-  assert.ok(pose.distance >= 3000, `distance ${pose.distance}`)
+  // The avenues run across the screen, uptown on the right.
+  close(pose.heading, 299, 1, "heading")
+  // main.ts uses a 45 degree vertical field of view; screenshots are 16:9.
+  const halfHeight = pose.distance * Math.tan((22.5 * Math.PI) / 180)
+  const halfWidth = (halfHeight * 16) / 9
+  const up = pose.heading * (Math.PI / 180)
+  const right = up + Math.PI / 2
+  for (const id of ["battery-park", "union-square", "venue"]) {
+    const place = PLACES.find((p) => p.id === id)!
+    const dx = place.at[0] - pose.target[0]
+    const dz = place.at[2] - pose.target[2]
+    // Screen axes on the ground: east is +x, north is -z.
+    const across = dx * Math.sin(right) - dz * Math.cos(right)
+    const along = dx * Math.sin(up) - dz * Math.cos(up)
+    assert.ok(Math.abs(across) < halfWidth * 0.9, `${id} is ${Math.round(across)} m across, screen half-width ${Math.round(halfWidth)}`)
+    assert.ok(Math.abs(along) < halfHeight * 0.9, `${id} is ${Math.round(along)} m up, screen half-height ${Math.round(halfHeight)}`)
+  }
 })
 
 test("Street level stands at eye height on Broadway and faces the venue", () => {
@@ -267,3 +283,24 @@ test("labels stay inside the screen and off the panels", () => {
   )
   assert.deepEqual(kept, ["fine"])
 })
+
+// test/fixtures/ui-<preset>.png are real screenshots of each preset (pnpm shot with
+// the preset's hash), and test/recordings/ holds the Decisions API's real answers
+// for them against checks/ui.json, so this replays every visual check with no key
+// and no network.
+function checkVisual(...args: string[]) {
+  const env = { ...process.env }
+  delete env.OPENAI_API_KEY
+  return spawnSync(process.execPath, ["scripts/check-visual.ts", ...args], { encoding: "utf8", env })
+}
+
+for (const p of PRESETS) {
+  test(`the recorded ${p.label} screenshot passes every UI check, readability included`, () => {
+    const png = `test/fixtures/ui-${p.id}.png`
+    assert.ok(statSync(png).size < 300_000, `${png} is over 300 KB`)
+    const run = checkVisual(png, "checks/ui.json", "--replay")
+    assert.equal(run.status, 0, run.stdout + run.stderr)
+    assert.equal(run.stdout.match(/^PASS /gm)?.length, 7, run.stdout)
+    assert.match(run.stdout, /^PASS {2}stage_readability {8}(acceptable|good) at/m)
+  })
+}

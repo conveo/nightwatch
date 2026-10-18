@@ -20,8 +20,8 @@ function neighbourhood(id: string, name: string, lat: number, lon: number): Plac
 
 // In priority order: when two labels overlap on screen, the earlier one stays.
 export const PLACES: readonly Place[] = [
-  // Just above the top of the venue's pin (80 m, see layers/venue.ts).
-  { id: "venue", name: "598 Broadway", kind: "venue", at: [0, 88, 0] },
+  // On the top of the venue's pin (80 m, see layers/venue.ts).
+  { id: "venue", name: "598 Broadway", kind: "venue", at: [0, 80, 0] },
   landmark("battery-park", "Battery Park", 40.7036, -74.0164),
   landmark("brooklyn-bridge", "Brooklyn Bridge", 40.7057, -73.9958),
   landmark("world-trade-center", "World Trade Center", 40.7127, -74.0134),

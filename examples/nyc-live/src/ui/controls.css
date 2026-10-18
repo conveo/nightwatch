@@ -168,12 +168,13 @@
   border-top-color: #ff3b30;
 }
 
-/* Phones: the toolbar spans the width and each row scrolls sideways. */
+/* Phones: the toolbar spans the width and each row scrolls sideways. It sits
+   higher, because the attribution wraps onto two lines. */
 @media (max-width: 720px) {
   .nyc-controls {
     left: 8px;
     right: 8px;
-    bottom: 32px;
+    bottom: 52px;
     transform: none;
     max-width: none;
   }

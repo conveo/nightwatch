@@ -93,16 +93,18 @@ export const PRESETS: readonly Preset[] = [
     label: "Brooklyn Bridge",
     view: roundView(poseToView({ target: at(40.7057, -73.9958), distance: 1200, pitch: 18, heading: 36 })),
   },
-  // The whole area, nearly straight down, turned so the avenues run up the screen.
+  // Nearly straight down on the whole island, from the Battery (left) to Union
+  // Square (right), as seen from Brooklyn: the island is longer than it is wide, so
+  // it runs along the width of a 16:9 screen.
   {
     id: "above",
     label: "From above",
     view: roundView(
       poseToView({
-        target: at((AREA.south + AREA.north) / 2, (AREA.west + AREA.east) / 2),
+        target: offset(at((AREA.south + AREA.north) / 2, (AREA.west + AREA.east) / 2), MANHATTAN_GRID_ROTATION_DEG, -350, 0),
         distance: 3500,
         pitch: 88,
-        heading: MANHATTAN_GRID_ROTATION_DEG,
+        heading: normalizeDegrees(MANHATTAN_GRID_ROTATION_DEG - 90),
       }),
     ),
   },
