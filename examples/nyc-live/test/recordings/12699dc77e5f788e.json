@@ -1,0 +1,20 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "lines_under_streets",
+      "probability": 0.9
+    },
+    {
+      "type": "predicate",
+      "name": "yellow_line_by_pin",
+      "probability": 0.94
+    },
+    {
+      "type": "predicate",
+      "name": "station_markers",
+      "probability": 1
+    }
+  ]
+}
