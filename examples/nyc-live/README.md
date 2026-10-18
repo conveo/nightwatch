@@ -65,22 +65,56 @@ city" panel exists, by the dev server's `/api/ask`. It never reaches the browser
 ## Review it
 
 The [reviewer overlay](../../reviewer-overlay/) lets a person pin notes, with a
-screenshot, on the running app; each note reaches an agent's mesh inbox. Start the
+screenshot, on the running app; each note reaches an agent's mesh inbox. With the
+agent-mesh daemon running, it takes two commands from the repository root: start the
 overlay server with every origin the app is opened from, then point the dev server
-at it:
+at it.
 
 ```bash
 pnpm overlay --origin http://127.0.0.1:5180 --target <reviewer agent id> \
-  --plan "$PWD/examples/nyc-live/plan/review-plan.json"     # from the repository root
+  --plan "$PWD/examples/nyc-live/plan/review-plan.json"
 NYC_LIVE_OVERLAY=http://127.0.0.1:4848 pnpm --dir examples/nyc-live dev
 ```
 
+Open the app, click **Reviewer** (bottom right), then **Add comment**, and allow
+sharing this tab. Click the scene to drop a pin, write a note and click **Send**.
+The agent reads the note with `agent-mesh inbox` (or `agent-mesh watch`): the
+comment, the pin, a screenshot of the tab with the pin drawn on it, and the page
+URL, whose hash is the exact view.
+
 The dev server adds the overlay's script to the page and forwards the script and
-`/api/review` on the app's own origin, so the browser only talks to the app. That
-also works through a proxy such as `tailscale serve` (add the proxy's origin with
-another `--origin`, and its host to `NYC_LIVE_ALLOWED_HOSTS`). The overlay never
-enters a production build. Its screenshot is the shared browser tab, so it shows the
-3D scene; each note carries the page URL, whose hash is the exact view.
+`/api/review` on the app's own origin, so the browser only talks to the app. The
+overlay never enters a production build. Through a proxy such as `tailscale serve`,
+add the proxy's origin with another `--origin`, and its host to
+`NYC_LIVE_ALLOWED_HOSTS`:
+
+```bash
+pnpm overlay --origin http://127.0.0.1:5180 --origin https://<proxy host> \
+  --target <reviewer agent id> --plan "$PWD/examples/nyc-live/plan/review-plan.json"
+NYC_LIVE_OVERLAY=http://127.0.0.1:4848 NYC_LIVE_ALLOWED_HOSTS=<proxy host> \
+  pnpm --dir examples/nyc-live dev
+```
+
+One command proves that all of this works. `scripts/review-e2e.ts` runs both
+commands on free ports against a throwaway mesh (its own Redis container and
+`AGENT_MESH_HOME`, never the mesh you work on) and opens the venue with
+`sel=bin:1007945` in a headless Chrome that accepts tab capture. It drops a pin on
+the venue, sends a note and reads the reviewer's inbox, then checks the note: the
+comment, a page URL whose hash is the view that was open, and a screenshot that
+passes [checks/review-note.json](checks/review-note.json). It stops everything it
+started and exits 0 only when all of that holds. It needs Docker, Chrome, and an
+OpenAI key for the visual check.
+
+```bash
+node scripts/review-e2e.ts --env-file <file with OPENAI_API_KEY>   # from examples/nyc-live
+node scripts/review-e2e.ts --via-proxy --env-file <file>           # the same, through a proxy
+```
+
+`--via-proxy` opens the app on a second host name through a local proxy that keeps
+the browser's `Host` header, as `tailscale serve` does. `--out` sets where the
+received screenshot is saved (`shots/review-note.png`), `--record` saves the visual
+check's answers for [test/review-e2e.test.ts](test/review-e2e.test.ts), and `--keep`
+keeps the logs of everything it started.
 
 ## Settings
 

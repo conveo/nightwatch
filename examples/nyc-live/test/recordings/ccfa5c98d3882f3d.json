@@ -1,0 +1,15 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "map_scene",
+      "probability": 0.99
+    },
+    {
+      "type": "predicate",
+      "name": "numbered_pin",
+      "probability": 1
+    }
+  ]
+}
