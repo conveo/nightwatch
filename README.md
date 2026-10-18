@@ -187,6 +187,7 @@ agent-mesh/          the daemon, CLI, delivery adapters, dashboard, supervisor a
   teardown.sh        retire the named actors after a run and report leftovers
 skills/              the agent skills
 reviewer-overlay/    browser overlay and local server that send ui-review notes
+examples/nyc-live/   an example app for a nightwatch run to build overnight (three.js, live NYC data)
 docs/                console, delivery contract, deployment, resilience, supervisor, verification record
 scripts/             maintainer tooling (sync from the upstream monorepo, denylist gate)
 docker-compose.yml   a local Redis

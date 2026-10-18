@@ -79,6 +79,24 @@ jobs:
       - name: Client build (ESM and classic script bundles)
         run: pnpm --dir reviewer-overlay build
 
+  nyc-live:
+    name: nyc-live example typecheck, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: examples/nyc-live/pnpm-lock.yaml
+      - run: pnpm --dir examples/nyc-live install --frozen-lockfile
+      - run: pnpm --dir examples/nyc-live typecheck
+      - name: Unit tests (visual checks replay recorded answers, so no API key)
+        run: pnpm --dir examples/nyc-live test
+      - run: pnpm --dir examples/nyc-live build
+
   skills:
     name: Skill files parse
     runs-on: ubuntu-latest

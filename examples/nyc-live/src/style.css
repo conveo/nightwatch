@@ -1,0 +1,70 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1020;
+  --fg: #e8ecf4;
+  --muted: #9aa4b8;
+  --panel: rgba(11, 16, 32, 0.78);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+#scene {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Text on top of the scene is sized for a projector: 24px and up. */
+#hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--panel);
+  pointer-events: none;
+}
+
+#hud h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+#hud p {
+  margin: 4px 0 0;
+  font-size: 24px;
+  color: var(--muted);
+}
+
+#ask {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 24px;
+}
+
+#attribution {
+  position: fixed;
+  right: 12px;
+  bottom: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  pointer-events: none;
+}
