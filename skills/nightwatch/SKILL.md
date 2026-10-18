@@ -348,7 +348,11 @@ your threshold" as suspect**, and read the pane or agent directly:
 Gate **every** PR. Merge-ready means ALL of:
 
 - your review bot's **explicit pass verdict for the PR head**, not an older comment:
-  confirm the reviewed commit equals the head;
+  confirm the reviewed commit equals the head. **Some bots review only the first
+  push** (Greptile does on some repositories): after every later push, ask for a
+  new review in a PR comment (for Greptile, `@greptile please review again`) and
+  wait until the reviewed commit is the new head. Put this in every worker's spawn
+  prompt; a worker that waits for a review that never comes stalls all night;
 - every check run green. A **DIRTY or conflicting PR silently skips CI** ("few
   checks, all green" is the tell);
 - **0 unresolved review threads** AND **0 outstanding review comments outside the
