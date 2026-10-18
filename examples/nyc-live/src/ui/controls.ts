@@ -76,10 +76,13 @@ export function mountControls(root: HTMLElement, ctx: ControlsContext): void {
   let flight = 0
   let destination: Preset | null = null
 
+  // A flight stopped midway leaves the camera between presets, and nothing else
+  // moves it, so the highlight is brought up to date here.
   function stopFlight(): void {
     if (flight !== 0) cancelAnimationFrame(flight)
     flight = 0
     destination = null
+    refreshPreset()
   }
 
   function flyTo(preset: Preset): void {
@@ -146,11 +149,11 @@ export function mountControls(root: HTMLElement, ctx: ControlsContext): void {
     }
   }
 
+  const panels = [root, ...PANELS.map((s) => document.querySelector<HTMLElement>(s))].filter((el) => el != null)
   function blockedRects(): Rect[] {
-    const panels = [root, ...PANELS.map((s) => document.querySelector<HTMLElement>(s))]
     return panels.flatMap((el) => {
-      const r = el?.getBoundingClientRect()
-      return r == null || r.width === 0 || r.height === 0 ? [] : [{ left: r.left, top: r.top, width: r.width, height: r.height }]
+      const r = el.getBoundingClientRect()
+      return r.width === 0 || r.height === 0 ? [] : [{ left: r.left, top: r.top, width: r.width, height: r.height }]
     })
   }
 
@@ -215,6 +218,10 @@ export function mountControls(root: HTMLElement, ctx: ControlsContext): void {
     refresh()
   })
   window.addEventListener("resize", updateLabels)
+  // Panels also change size while the camera stands still (the HUD's status line
+  // fills in once the layers load, the ask panel opens), so place the labels again.
+  const panelSizes = new ResizeObserver(updateLabels)
+  for (const el of panels) panelSizes.observe(el)
 
   measure()
   refresh()
