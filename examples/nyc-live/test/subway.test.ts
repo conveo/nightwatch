@@ -7,6 +7,7 @@ import { Raycaster, Vector3, type Mesh, type MeshStandardMaterial } from "three"
 import {
   buildSubwayData,
   clipLine,
+  dropBacktracks,
   parseColor,
   parseCsv,
   parseRoutes,
@@ -87,6 +88,13 @@ test("a line leaving the region is cut where it crosses the boundary", () => {
   assert.equal(clipped.length, 3)
   assert.ok(Math.abs(clipped[2]!.lat - 40.5) < 1e-6)
   assert.deepEqual(clipLine([{ lat: 41, lon: -74 }], inside), [])
+})
+
+test("a shape's out-and-back excursion is dropped, the rest kept", () => {
+  const p = (lat: number) => ({ lat, lon: -74 })
+  // A B C D C B E: out to D and back to B, then on to E.
+  assert.deepEqual(dropBacktracks([p(1), p(2), p(3), p(4), p(3), p(2), p(5)]), [p(1), p(2), p(5)])
+  assert.deepEqual(dropBacktracks([p(1), p(2), p(3)]), [p(1), p(2), p(3)])
 })
 
 // A tiny feed: the N runs north under the venue, then a shape whose id names the 6

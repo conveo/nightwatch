@@ -186,6 +186,20 @@ export function readFeed(file: (name: string) => string): Feed {
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6
 
+// Some MTA shapes run out to a point and straight back over the same points (the
+// N..N20R does, by Canal St). No train does that, and a train placed along the shape
+// would jump out and back, so the excursion is dropped: a point equal to the one
+// before last undoes the last step.
+export function dropBacktracks(points: LatLon[]): LatLon[] {
+  const out: LatLon[] = []
+  for (const p of points) {
+    const before = out.at(-2)
+    if (before != null && before.lat === p.lat && before.lon === p.lon) out.pop()
+    else out.push(p)
+  }
+  return out
+}
+
 // The part of a line inside a region: from its first point inside to its last, plus
 // the points where it crosses the boundary, so lines run right up to the edge.
 export function clipLine(points: LatLon[], inside: (p: LatLon) => boolean): LatLon[] {
@@ -216,7 +230,7 @@ export function buildSubwayData(feed: Feed, inside: (p: LatLon) => boolean, clip
   for (const [id, raw] of [...feed.shapes].sort((a, b) => a[0].localeCompare(b[0]))) {
     const route = feed.shapeRoute.get(id)
     if (route == null) continue
-    const points = clipLine(raw, inside).map((p): [number, number] => [round6(p.lat), round6(p.lon)])
+    const points = clipLine(dropBacktracks(raw), inside).map((p): [number, number] => [round6(p.lat), round6(p.lon)])
     if (points.length < 2) continue
     const path = toPath(points)
     const stops = [...(feed.shapeStops.get(id) ?? [])]
