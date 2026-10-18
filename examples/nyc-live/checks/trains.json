@@ -1,0 +1,17 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, seen from above at an angle, in recorded mode (a saved MTA feed). The subway lines are drawn as thin tubes 12 m below street level in their official route colours, with small white station markers. Trains are drawn as short rectangular blocks, a little wider than the tubes and in their line's colour, placed along the lines from the feed. The venue is marked by a red pin on a red ring at the centre. The status line under the title at the top left lists what each layer has loaded.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "train_blocks_on_lines",
+      "instructions": "Several short, thick rectangular blocks sit on the coloured subway lines, each one lying along its line and coloured like a subway line (orange, green, blue, red or similar), like trains on the tracks.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "not_real_time_notice",
+      "instructions": "The status text at the top left says that the train positions may not be real time.",
+      "min": 0.8
+    }
+  ]
+}
