@@ -82,10 +82,10 @@ index 0742816..12415d8 100644
      <script src="/theme-init.js"></script>
    </head>
 diff --git a/agent-mesh/dashboard/package.json b/agent-mesh/dashboard/package.json
-index d94745a..2e81844 100644
+index d94745a..654035a 100644
 --- a/agent-mesh/dashboard/package.json
 +++ b/agent-mesh/dashboard/package.json
-@@ -11,17 +11,29 @@
+@@ -11,20 +11,33 @@
      "preview": "vite preview"
    },
    "dependencies": {
@@ -116,6 +116,10 @@ index d94745a..2e81844 100644
    },
    "devDependencies": {
      "@tailwindcss/vite": "^4.1.16",
++    "@types/node": "^25.5.2",
+     "@types/react": "^18.3.18",
+     "@types/react-dom": "^18.3.5",
+     "@vitejs/plugin-react": "^4.3.4",
 diff --git a/agent-mesh/dashboard/public/manifest.webmanifest b/agent-mesh/dashboard/public/manifest.webmanifest
 new file mode 100644
 index 0000000..c996c28
