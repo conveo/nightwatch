@@ -1,0 +1,23 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, rendered in a web browser. The camera looks down at an angle on the blocks around the venue, which is marked by a red pin.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "dense_buildings",
+      "instructions": "Dense blocks of 3D buildings of varying heights fill the area around the centre of the view.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "pin_among_buildings",
+      "instructions": "The red pin stands among buildings.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "one_highlighted",
+      "instructions": "One building is highlighted in bright yellow, a colour no other building in the view has.",
+      "min": 0.8
+    }
+  ]
+}
