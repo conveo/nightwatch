@@ -106,7 +106,8 @@ export type Run = {
   speed: number
 }
 
-export const DEFAULT_SPEED_MS = 9
+// Metres per second, a subway train's usual pace between stations.
+export const DEFAULT_SPEED = 9
 
 export function toRun(trip: FeedTrip, shape: SubwayShape, path: Path = toPath(shape.points)): Run | null {
   const order = new Map(shape.stops.map((s, i) => [s.id, i]))
@@ -138,18 +139,21 @@ export function toRun(trip: FeedTrip, shape: SubwayShape, path: Path = toPath(sh
     before: firstShapeIndex > 0 ? shape.stops[firstShapeIndex - 1]!.d : null,
     outsideFirst: trip.stops.slice(0, firstIndex),
     ends: lastTripIndex === trip.stops.length - 1,
-    speed: median == null ? DEFAULT_SPEED_MS : Math.min(Math.max(median, 4), 20),
+    speed: median == null ? DEFAULT_SPEED : Math.min(Math.max(median, 4), 20),
   }
 }
 
 // How long a train stays drawn at the terminal it has reached.
 const TERMINAL_HOLD_S = 60
+// A first stop further off than this, with none before it, is a trip that has not
+// started yet (or a train held far away), not one between two stations.
+const NOT_STARTED_S = 300
 
 // How far along its shape (metres) the train is at time `t` (Unix seconds), or null
 // when it is not on the drawn part of the line. Between two known stops it moves at
 // an even pace from one's departure to the next one's arrival. Before its first known
-// stop it runs in at `speed`, having left the station before (no closer than it);
-// after the last it runs on at `speed` until it leaves the line.
+// stop it runs in at `speed`, but no further back than the station before it on the
+// shape, which it has left; after the last it runs on at `speed` until it leaves the line.
 export function positionAt(run: Run, t: number): number | null {
   const { stops, speed } = run
   const next = stops.findIndex((s) => s.arrive > t)
@@ -168,9 +172,11 @@ export function positionAt(run: Run, t: number): number | null {
   } else {
     const first = stops[0]!
     d = first.d - speed * (first.arrive - t)
-    // Still to call at stations outside the line: it is not on it yet.
-    const outside = run.outsideFirst.some((s) => s.depart > t)
-    if (!outside && run.before != null) d = Math.max(d, run.before)
+    // Still to call at stations outside the line, it has not reached the line yet.
+    if (!run.outsideFirst.some((s) => s.depart > t)) {
+      if (first.arrive - t > NOT_STARTED_S) return null
+      if (run.before != null) d = Math.max(d, run.before)
+    }
   }
   return d >= 0 && d <= run.path.length ? d : null
 }
@@ -235,8 +241,10 @@ export type TrainsOptions = {
   now?: () => number
 }
 
+// Recorded mode with no time asks for the latest snapshot: the last one before now.
 export async function fetchTrainFeed(feed: string, mode: LayerContext["mode"], t: string | null): Promise<TrainFeed> {
-  const query = mode === "fixture" ? "?fixture" : mode === "recorded" && t != null ? `?t=${encodeURIComponent(t)}` : ""
+  const at = t ?? new Date().toISOString()
+  const query = mode === "fixture" ? "?fixture" : mode === "recorded" ? `?t=${encodeURIComponent(at)}` : ""
   const res = await fetch(`/api/mta/${feed}${query}`)
   if (!res.ok) throw new Error(`/api/mta/${feed}: HTTP ${res.status}`)
   return (await res.json()) as TrainFeed
@@ -255,7 +263,7 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
   const colors = new Map<string, Color>()
   const feedData = new Map<string, TrainFeed>()
   let trips = new Map<string, FeedTrip>()
-  let runs: Array<{ trip: string; route: string; run: Run }> = []
+  let runs: Array<{ route: string; run: Run }> = []
   let failed: string[] = []
   let mesh: InstancedMesh<BoxGeometry, MeshBasicMaterial> | null = null
   let drawn = 0
@@ -290,7 +298,7 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       if (shape == null) continue
       const run = toRun(trip, shape, paths.get(shape.id))
       // A rerouted train keeps its own colour on the other line's tracks.
-      if (run != null) runs.push({ trip: trip.id, route: colors.has(trip.route) ? trip.route : shape.route, run })
+      if (run != null) runs.push({ route: colors.has(trip.route) ? trip.route : shape.route, run })
     }
   }
 
@@ -312,7 +320,9 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       if (drawn >= MAX_TRAINS) break
       const d = positionAt(run, t)
       if (d == null) continue
-      const at = pointAlong(run.path, d)
+      // The whole block stays on the line, so none of it hangs past where the line ends.
+      const half = Math.min(BLOCK.length / 2, run.path.length / 2)
+      const at = pointAlong(run.path, Math.min(Math.max(d, half), run.path.length - half))
       p.set(at.x, SUBWAY_DEPTH_M + 1, at.z)
       q.setFromEuler(e.set(0, Math.atan2(at.dir.x, at.dir.z), 0))
       mesh.setMatrixAt(drawn, m.compose(p, q, scale))
@@ -354,17 +364,15 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       startedAt = performance.now()
       lastRefresh = startedAt
       const saved = dataTime() ?? 0
+      // Recorded mode without a time plays the latest recording from its start.
       clockStart =
         context.mode === "recorded" && context.time != null
           ? Date.parse(context.time) / 1000
           : context.mode === "fixture"
-            ? busiestMoment(
-                runs.map((r) => r.run),
-                saved,
-              )
+            ? busiestMoment(runs.map((r) => r.run), saved)
             : saved
       mesh = new InstancedMesh(new BoxGeometry(BLOCK.width, BLOCK.height, BLOCK.length), new MeshBasicMaterial(), MAX_TRAINS)
-      mesh.name = "trains"
+      mesh.name = "train-blocks"
       // The blocks move every frame; their bounds would always be stale.
       mesh.frustumCulled = false
       group.add(mesh)
