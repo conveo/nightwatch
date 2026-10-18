@@ -15,7 +15,7 @@ import {
 } from "../server/city-state.ts"
 import type { Recording } from "../server/decisions.ts"
 import { BadQuestion, createAskRoutes, parseQuestion, planQuestion, readAnswer } from "../server/routes/ask.ts"
-import { askParam, parseAsk, percent } from "../src/ask/ask-param.ts"
+import { answerSelection, askParam, parseAsk, percent, selectionFor } from "../src/ask/ask-param.ts"
 import type { AskOptions, AskResponse } from "../src/ask/types.ts"
 import { VENUE } from "../src/geo.ts"
 
@@ -264,6 +264,26 @@ test("a question in the URL survives a round trip", () => {
     assert.deepEqual(parseAsk(askParam(q)), q)
   }
   for (const bad of [null, "", "route", "route:", "weather:sunny"]) assert.equal(parseAsk(bad), null, String(bad))
+})
+
+test("a line answer selects its subway route in the scene; others select nothing", () => {
+  assert.equal(selectionFor("line:6"), "route:6")
+  assert.equal(selectionFor("line:R/W"), "route:R")
+  for (const other of ["citibike", "walk", "line:", null]) assert.equal(selectionFor(other), null, String(other))
+})
+
+test("an answer changes only a selection the panel owns", () => {
+  // The panel selects a line answer's route, and a later walking answer clears it.
+  let step = answerSelection(null, "line:6", null)
+  assert.deepEqual(step, { sel: "route:6", owned: "route:6" })
+  assert.deepEqual(answerSelection(step.sel, "walk", step.owned), { sel: null, owned: null })
+  // A selection the person made survives an answer that highlights nothing.
+  assert.deepEqual(answerSelection("bin:1007945", "citibike", "route:6"), { sel: "bin:1007945", owned: "route:6" })
+  // A route the person already selected is not claimed by an answer naming the same
+  // route, so a later yes/no answer does not clear it.
+  step = answerSelection("route:6", "line:6", null)
+  assert.deepEqual(step, { sel: "route:6", owned: null })
+  assert.deepEqual(answerSelection(step.sel, null, step.owned), { sel: "route:6", owned: null })
 })
 
 // test/fixtures/ask.png is a real screenshot of the panel answering a route

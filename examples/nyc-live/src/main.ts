@@ -13,7 +13,7 @@ import { MapControls } from "three/addons/controls/MapControls.js"
 import { mountAskPanel } from "./ask/panel.ts"
 import { createLayers } from "./layers/index.ts"
 import { mountControls } from "./ui/controls.ts"
-import { parseViewState, serializeViewState, type Light, type ViewState } from "./view-state.ts"
+import { parseViewState, serializeViewState, type Light, type Vec3, type ViewState } from "./view-state.ts"
 import "./style.css"
 
 declare global {
@@ -98,7 +98,15 @@ controls.addEventListener("change", () => {
   clearTimeout(settle)
   settle = setTimeout(captureCamera, 300)
 })
-window.addEventListener("hashchange", () => applyView(parseViewState(location.hash)))
+// A hash that keeps the view's camera (the ask panel changing only the selection)
+// keeps the live camera too, rather than snapping back to the last saved position,
+// which lags a moving camera. The hash rounds positions to 0.1 m.
+const near = (a: Vec3, b: Vec3) => a.every((v, i) => Math.abs(v - b[i]!) < 0.06)
+window.addEventListener("hashchange", () => {
+  const next = parseViewState(location.hash)
+  const keepCamera = near(next.cam, view.cam) && near(next.tgt, view.tgt)
+  applyView(keepCamera ? { ...next, cam: camera.position.toArray(), tgt: controls.target.toArray() } : next)
+})
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
