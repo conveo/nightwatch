@@ -3,6 +3,7 @@
 //   node scripts/review-e2e.ts --env-file <file with OPENAI_API_KEY>
 //   node scripts/review-e2e.ts --via-proxy      # open the app through a proxy on another host name
 //   node scripts/review-e2e.ts --record         # also save check:visual's answers (test/recordings/)
+//   node scripts/review-e2e.ts --out shots/review-note.png --keep   # where the screenshot goes; keep the logs
 //
 // It runs the two commands of the README's "Review it" section with everything they
 // need, all of it throwaway and stopped again at the end, even on failure: a Redis
@@ -19,7 +20,7 @@ import { closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readFileSync
 import { createServer as createHttpServer, request as httpRequest, type Server } from "node:http"
 import { connect, createServer as createNetServer, type AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { dirname, join, relative, resolve } from "node:path"
 import process, { env } from "node:process"
 import { setTimeout as sleep } from "node:timers/promises"
 import { fileURLToPath } from "node:url"
@@ -33,6 +34,8 @@ export const NOTE_TEXT = "Review check: this pin marks the venue, 598 Broadway."
 export const REVIEW_VIEW: ViewState = { ...DEFAULT_VIEW, sel: "bin:1007945" }
 // The proxy's host name. Chrome resolves it to loopback, like a tailnet name.
 export const PROXY_HOST = "review-proxy.test"
+// Chrome's window. Headless Chrome keeps some of it for the browser frame, so the
+// page's viewport (and the screenshot) is a little shorter.
 const WIDTH = 1600
 const HEIGHT = 900
 const REDIS_IMAGE = "redis:7-alpine"
@@ -130,6 +133,9 @@ export async function startProxy(targetPort: number): Promise<Server> {
       upstream.pipe(socket)
       socket.pipe(upstream)
     })
+    // A tunnel ends with either side: HTTP servers keep half-closed sockets open.
+    upstream.on("close", () => socket.destroy())
+    socket.on("close", () => upstream.destroy())
     upstream.on("error", () => socket.destroy())
     socket.on("error", () => upstream.destroy())
   })
@@ -217,10 +223,20 @@ async function waitUntil(what: string, ready: () => Promise<boolean>, options: {
   throw new Error(`timed out after ${options.timeoutMs} ms waiting for ${what}${options.process == null ? "" : `:\n${logTail(options.process)}`}`)
 }
 
-async function answers(url: string): Promise<boolean> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(2000) })
-  await res.body?.cancel()
-  return res.ok
+// True when a GET of `url` answers 2xx. Everything here listens on loopback, and
+// only Chrome resolves the proxy's host name, so this connects to 127.0.0.1 and
+// sends the URL's host as the Host header, as the browser does.
+export function answers(url: string): Promise<boolean> {
+  const { host, port, pathname, search } = new URL(url)
+  return new Promise((done) => {
+    const req = httpRequest({ host: "127.0.0.1", port, path: pathname + search, headers: { host }, timeout: 2000 }, (res) => {
+      res.resume()
+      done(res.statusCode != null && res.statusCode >= 200 && res.statusCode < 300)
+    })
+    req.on("timeout", () => req.destroy())
+    req.on("error", () => done(false))
+    req.end()
+  })
 }
 
 // ---- a browser tab over the DevTools protocol ----
@@ -349,7 +365,7 @@ async function startChrome(work: string, extraFlags: string[]): Promise<string> 
       if (noSandbox) say("Chrome started with --no-sandbox (the sandbox is not available here)")
       return `http://127.0.0.1:${port}`
     } catch (error) {
-      if (noSandbox) throw error
+      if (noSandbox || !exited(chrome)) throw error
       await stopGroup(chrome.child)
     }
   }
@@ -368,14 +384,16 @@ async function review(options: { viaProxy: boolean; out: string; work: string })
   const redisName = `nyc-live-review-e2e-${runId}`
   await run("docker", ["run", "-d", "--rm", "--name", redisName, "-p", `127.0.0.1:${redisPort}:6379`, REDIS_IMAGE], { timeout: 120_000 })
   cleanups.push(() => run("docker", ["rm", "-f", redisName], { timeout: 30_000 }))
-  await waitUntil("Redis", async () => (await run("docker", ["exec", redisName, "redis-cli", "ping"])).stdout.includes("PONG"), { timeoutMs: 15_000 })
+  await waitUntil("Redis", async () => (await run("docker", ["exec", redisName, "redis-cli", "ping"], { timeout: 5000 })).stdout.includes("PONG"), { timeoutMs: 15_000 })
 
   // Every mesh process gets a minimal environment, so ids, sockets and session
-  // variables of the calling shell cannot reach the throwaway mesh.
+  // variables of the calling shell cannot reach the throwaway mesh. Node's own
+  // settings (memory limit, I/O backend) still apply.
+  const nodeSettings = Object.entries(env).filter(([key]) => key === "NODE_OPTIONS" || key === "UV_USE_IO_URING")
   const meshEnv: NodeJS.ProcessEnv = {
     PATH: env.PATH,
     HOME: env.HOME,
-    ...(env.NODE_OPTIONS == null ? {} : { NODE_OPTIONS: env.NODE_OPTIONS }),
+    ...Object.fromEntries(nodeSettings),
     AGENT_MESH_REDIS_URL: `redis://127.0.0.1:${redisPort}`,
     AGENT_MESH_HOME: join(work, "mesh-home"),
     AGENT_MESH_PREFIX: `review-e2e-${runId}`,
@@ -395,7 +413,10 @@ async function review(options: { viaProxy: boolean; out: string; work: string })
   const chromeFlags: string[] = []
   if (options.viaProxy) {
     const proxy = await startProxy(devPort)
-    cleanups.push(() => new Promise<void>((done) => proxy.close(() => done())))
+    cleanups.push(() => new Promise<void>((done) => {
+      proxy.closeAllConnections()
+      proxy.close(() => done())
+    }))
     appOrigin = `http://${PROXY_HOST}:${(proxy.address() as AddressInfo).port}`
     // getDisplayMedia needs a secure context; a proxy such as `tailscale serve` is HTTPS.
     chromeFlags.push(`--host-resolver-rules=MAP ${PROXY_HOST} 127.0.0.1`, `--unsafely-treat-insecure-origin-as-secure=${appOrigin}`)
@@ -488,21 +509,22 @@ async function review(options: { viaProxy: boolean; out: string; work: string })
   mkdirSync(dirname(options.out), { recursive: true })
   copyFileSync(body.screenshot, options.out)
   say(`note ${note!.id} from ${note!.from}: comment, page URL ${new URL(body.url).hash}, pin #1 at ${body.pin.xPct}%, ${body.pin.yPct}%`)
-  say(`screenshot ${size!.width}x${size!.height}, saved to ${options.out}`)
+  say(`screenshot ${size!.width}x${size!.height}, saved to ${relative(process.cwd(), options.out)}`)
 }
 
 async function main(): Promise<number> {
   const { values } = parseArgs({
     options: {
       "via-proxy": { type: "boolean", default: false },
-      out: { type: "string", default: "shots/review-note.png" },
+      out: { type: "string" },
       "env-file": { type: "string" },
       record: { type: "boolean", default: false },
       keep: { type: "boolean", default: false },
     },
   })
   const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..")
-  const out = resolve(values.out)
+  // shots/ is ignored by git, wherever the command runs from.
+  const out = values.out == null ? join(appDir, "shots/review-note.png") : resolve(values.out)
   const work = mkdtempSync(join(tmpdir(), "nyc-live-review-e2e-"))
   cleanups.push(async () => {
     if (values.keep) say(`work directory kept: ${work}`)
