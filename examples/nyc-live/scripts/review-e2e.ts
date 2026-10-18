@@ -154,13 +154,14 @@ async function freePort(): Promise<number> {
 }
 
 const cleanups: Array<() => Promise<unknown>> = []
-let stopping: Promise<void> | null = null
+let stopping: Promise<void> = Promise.resolve()
 
-// Stops everything in the reverse order it started. Safe to call twice.
+// Stops everything in the reverse order it started. A second call waits for the
+// first, then also stops what started since.
 function stopAll(): Promise<void> {
-  stopping ??= (async () => {
-    for (const cleanup of cleanups.reverse()) await cleanup().catch(() => {})
-  })()
+  stopping = stopping.then(async () => {
+    while (cleanups.length > 0) await cleanups.pop()!().catch(() => {})
+  })
   return stopping
 }
 
@@ -382,8 +383,14 @@ async function review(options: { viaProxy: boolean; out: string; work: string })
 
   say(`starting a throwaway Redis on 127.0.0.1:${redisPort}`)
   const redisName = `nyc-live-review-e2e-${runId}`
-  await run("docker", ["run", "-d", "--rm", "--name", redisName, "-p", `127.0.0.1:${redisPort}:6379`, REDIS_IMAGE], { timeout: 120_000 })
-  cleanups.push(() => run("docker", ["rm", "-f", redisName], { timeout: 30_000 }))
+  const redis = run("docker", ["run", "-d", "--rm", "--name", redisName, "-p", `127.0.0.1:${redisPort}:6379`, REDIS_IMAGE], { timeout: 120_000 })
+  // Registered before Docker answers, so an interrupted start still removes the
+  // container once `docker run` is done with it.
+  cleanups.push(async () => {
+    await redis.catch(() => {})
+    await run("docker", ["rm", "-f", redisName], { timeout: 30_000 })
+  })
+  await redis
   await waitUntil("Redis", async () => (await run("docker", ["exec", redisName, "redis-cli", "ping"], { timeout: 5000 })).stdout.includes("PONG"), { timeoutMs: 15_000 })
 
   // Every mesh process gets a minimal environment, so ids, sockets and session
@@ -551,8 +558,11 @@ async function main(): Promise<number> {
     join(appDir, "checks/review-note.json"),
     ...(values["env-file"] == null ? [] : ["--env-file", resolve(values["env-file"])]),
     ...(values.record ? ["--record"] : []),
-  ], { cwd: appDir, stdio: "inherit" })
+  ], { cwd: appDir, stdio: "inherit", detached: true })
+  // Stopped with everything else when the run is interrupted.
+  cleanups.push(() => stopGroup(check))
   const code = await new Promise<number | null>((done) => check.once("exit", done))
+  await stopAll()
   if (code !== 0) {
     console.error("[review] FAIL: the screenshot does not pass checks/review-note.json")
     return 1

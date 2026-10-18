@@ -2,7 +2,8 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { createServer, request, type Server } from "node:http"
-import type { AddressInfo } from "node:net"
+import type { AddressInfo, Socket } from "node:net"
+import type { Duplex } from "node:stream"
 import { test } from "node:test"
 import {
   answers,
@@ -127,7 +128,9 @@ test("the proxy forwards requests with the browser's Host header", async () => {
 
 test("the proxy forwards WebSocket upgrades, such as the dev server's", async () => {
   const upstream = createServer()
+  const sockets = new Set<Duplex>()
   upstream.on("upgrade", (req, socket) => {
+    sockets.add(socket)
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Seen-Host: ${req.headers.host}\r\n\r\n`)
     socket.on("data", (data) => socket.write(data))
     socket.on("end", () => socket.end())
@@ -136,24 +139,37 @@ test("the proxy forwards WebSocket upgrades, such as the dev server's", async ()
   const port = (proxy.address() as AddressInfo).port
   try {
     const { echo, seenHost } = await new Promise<{ echo: string; seenHost: unknown }>((resolve, reject) => {
+      let upgraded: Socket | null = null
       const req = request({
         host: "127.0.0.1",
         port,
         headers: { host: `${PROXY_HOST}:${port}`, connection: "Upgrade", upgrade: "websocket" },
       })
+      // A broken tunnel can stay open without an answer: give up and close it.
+      const deadline = setTimeout(() => {
+        req.destroy()
+        upgraded?.destroy()
+        reject(new Error("no echo through the proxy within 5 s"))
+      }, 5000)
       req.on("upgrade", (res, socket) => {
+        upgraded = socket
         socket.once("data", (data) => {
+          clearTimeout(deadline)
           resolve({ echo: data.toString(), seenHost: res.headers["x-seen-host"] })
           socket.destroy()
         })
         socket.write("ping")
       })
-      req.on("error", reject)
+      req.on("error", (error) => {
+        clearTimeout(deadline)
+        reject(error)
+      })
       req.end()
     })
     assert.equal(echo, "ping")
     assert.equal(seenHost, `${PROXY_HOST}:${port}`)
   } finally {
+    for (const socket of sockets) socket.destroy()
     await close(proxy)
     await close(upstream)
   }
