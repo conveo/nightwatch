@@ -1,5 +1,5 @@
 import { parseViewState, serializeViewState, type ViewState } from "../view-state.ts"
-import { askParam, parseAsk, percent, selectionFor } from "./ask-param.ts"
+import { answerSelection, askParam, parseAsk, percent } from "./ask-param.ts"
 import type { AskOptions, AskQuestion, AskResponse, AskTemplate } from "./types.ts"
 import { YESNO_MAX_LENGTH } from "./types.ts"
 import "./panel.css"
@@ -77,9 +77,10 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
 
   // Changes the view through the URL. A fragment navigation fires hashchange, so
   // main.ts applies it; replace() keeps one history entry, like main.ts's own URL
-  // updates. The URL is the base because it is never behind main.ts's view.
+  // updates. The base is main.ts's view, whose camera main.ts compares with the
+  // hash's to keep a moving camera where it is; the question is the panel's own.
   function setUrl(change: Partial<ViewState>): void {
-    location.replace(serializeViewState({ ...parseViewState(location.hash), ...change }))
+    location.replace(serializeViewState({ ...getView(), ask: asked, ...change }))
   }
 
   function showTemplate(): void {
@@ -148,14 +149,12 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
     status.textContent = ""
   }
 
-  // Highlights the answer in the scene by selecting its subway route. A Citi Bike
-  // or walking answer clears a route the panel selected before, but never a
-  // selection the person made.
+  // Highlights the answer in the scene by selecting its subway route (see
+  // answerSelection for whose selection an answer may change).
   function highlight(r: AskResponse): void {
-    const current = parseViewState(location.hash).sel
-    const next = selectionFor(r.highlight)
-    const sel = next ?? (current === highlighted ? null : current)
-    highlighted = next
+    const current = getView().sel
+    const { sel, owned } = answerSelection(current, r.highlight, highlighted)
+    highlighted = owned
     if (sel !== current) setUrl({ sel })
   }
 

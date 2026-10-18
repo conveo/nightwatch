@@ -44,6 +44,21 @@ export function selectionFor(highlight: string | null): string | null {
   return line == null || line === "" ? null : `route:${line}`
 }
 
+// The URL's selection once an answer arrives, and the selection the panel then
+// owns. A line answer selects its route; any other answer clears only a route the
+// panel selected itself, never a selection the person made. The panel owns only a
+// selection it wrote: an answer that matches the current selection leaves it as is.
+export function answerSelection(
+  current: string | null,
+  highlight: string | null,
+  owned: string | null,
+): { sel: string | null; owned: string | null } {
+  const next = selectionFor(highlight)
+  if (next != null) return next === current ? { sel: current, owned } : { sel: next, owned: next }
+  if (current != null && current === owned) return { sel: null, owned: null }
+  return { sel: current, owned }
+}
+
 export function percent(p: number): string {
   return `${Math.round(p * 100)}%`
 }
