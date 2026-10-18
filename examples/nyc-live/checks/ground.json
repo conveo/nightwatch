@@ -1,0 +1,23 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan rendered in a web browser, seen from straight above with north at the top. The ground layer draws land, water and street centrelines.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "water_west_and_east",
+      "instructions": "A large land area fills the middle of the view, and it borders water (a distinctly coloured, mostly street-free area) both on its west (left) side and on its east (right) side.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "street_grid",
+      "instructions": "A street grid is visible on the land: many thin lines that form city blocks.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "no_square_grid",
+      "instructions": "No plain square grid is visible: there is no evenly spaced lattice of identical squares, like a 3D editor's floor grid, covering the view. Streets of varying spacing and direction do not count as such a grid.",
+      "min": 0.8
+    }
+  ]
+}
