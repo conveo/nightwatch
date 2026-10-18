@@ -132,7 +132,7 @@ mountControls(document.querySelector<HTMLElement>("#controls")!, {
   getView: () => view,
   setView,
 })
-mountAskPanel(document.querySelector<HTMLElement>("#ask")!, () => view)
+const askSettled = mountAskPanel(document.querySelector<HTMLElement>("#ask")!, () => view)
 
 let last = performance.now()
 renderer.setAnimationLoop((now) => {
@@ -154,6 +154,8 @@ function renderStatus(): void {
 renderStatus()
 setInterval(renderStatus, 5_000)
 for (const layer of layers) layer.select?.(view.sel)
+// A question in the URL is part of the view: report ready once its answer shows.
+await askSettled
 
 // Two frames after the last layer loads, everything is on screen.
 requestAnimationFrame(() =>

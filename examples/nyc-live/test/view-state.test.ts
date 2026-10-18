@@ -16,6 +16,7 @@ test("a full view survives a round trip through the URL", () => {
     t: "2026-10-21T23:10:00Z",
     layers: ["buildings", "subway"],
     light: "night",
+    ask: "route:brooklyn-bridge",
   }
   const hash = serializeViewState(view)
   assert.deepEqual(parseViewState(hash), { ...view, cam: [120.3, 380, -520.5] })
@@ -40,4 +41,18 @@ test("an explicitly empty layer list survives a round trip", () => {
   const none: ViewState = { ...DEFAULT_VIEW, layers: [] }
   assert.deepEqual(parseViewState(serializeViewState(none)).layers, [])
   assert.equal(parseViewState(serializeViewState(DEFAULT_VIEW)).layers, null)
+})
+
+test("the panel's question survives a round trip and stays readable", () => {
+  const hash = serializeViewState({ ...DEFAULT_VIEW, ask: "line:F" })
+  assert.equal(hash, "#cam=320,420,620&tgt=0,0,0&mode=fixture&ask=line:F")
+  assert.equal(parseViewState(hash).ask, "line:F")
+  const free = { ...DEFAULT_VIEW, ask: "yesno:Are there e-bikes near the venue? & more" }
+  assert.deepEqual(parseViewState(serializeViewState(free)), free)
+})
+
+test("no question leaves no ask parameter", () => {
+  assert.equal(serializeViewState(DEFAULT_VIEW).includes("ask="), false)
+  assert.equal(parseViewState(serializeViewState(DEFAULT_VIEW)).ask, null)
+  assert.equal(parseViewState("#ask=").ask, null)
 })
