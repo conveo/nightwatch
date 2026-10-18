@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  mesh:
+    name: Typecheck, tests, verify.sh
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    env:
+      AGENT_MESH_REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            agent-mesh/dashboard/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Dashboard dependencies (the plan sanitizer tests load dompurify, else they SKIP)
+        run: pnpm --dir agent-mesh/dashboard install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Tests (real Redis, key prefix "meshtest")
+        run: pnpm test
+      - name: verify.sh (daemon, two agents, message, receipt)
+        run: ./agent-mesh/verify.sh
+
+  dashboard:
+    name: Dashboard build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: agent-mesh/dashboard/pnpm-lock.yaml
+      - run: pnpm --dir agent-mesh/dashboard install --frozen-lockfile
+      - run: pnpm --dir agent-mesh/dashboard exec tsc --noEmit -p .
+      - run: pnpm --dir agent-mesh/dashboard build
+
+  overlay:
+    name: Reviewer overlay typecheck, tests, client build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir reviewer-overlay typecheck
+      - name: Unit tests (server and markdown, node:test)
+        run: pnpm --dir reviewer-overlay test
+      - name: Client build (ESM and classic script bundles)
+        run: pnpm --dir reviewer-overlay build
+
+  skills:
+    name: Skill files parse
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: JSON files parse
+        run: |
+          for f in skills/human-review/*.json; do
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$f" && echo "ok $f"
+          done
+      - name: Every skill has front matter with a name and a description
+        run: |
+          for f in skills/*/SKILL.md; do
+            head -1 "$f" | grep -qx -- '---' || { echo "no front matter: $f"; exit 1; }
+            grep -q '^name: ' "$f" && grep -q '^description: ' "$f" || { echo "missing name/description: $f"; exit 1; }
+            echo "ok $f"
+          done
+
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Scan the working tree and the full history
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 detect --source /repo --redact --verbose

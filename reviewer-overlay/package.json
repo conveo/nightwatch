@@ -1,0 +1,33 @@
+{
+  "name": "reviewer-overlay",
+  "version": "0.1.0",
+  "description": "A review overlay for web apps in development. A person pins a spot on the page, writes a note, and sends it with a screenshot to an agent on agent-mesh.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": "./dist/reviewer-overlay.js"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "node scripts/build-client.ts",
+    "start": "node scripts/build-client.ts && node src/server/main.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "bash e2e/run.sh"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-plan.schema.json",
+  "title": "Reviewer test plan",
+  "description": "The test plan an agent writes for a person to walk through in a reviewer tool. See SKILL.md section B.",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string", "description": "Plain text, e.g. '<PR> · verify'." },
+    "subtitle": { "type": "string", "description": "Short context. GitHub-flavoured Markdown." },
+    "appBase": { "type": "string", "description": "Base URL of the app. Same-origin tools ignore it." },
+    "features": {
+      "type": "array",
+      "description": "One entry per behaviour to verify. Shown one at a time.",
+      "items": { "$ref": "#/$defs/feature" }
+    },
+    "steps": {
+      "type": "array",
+      "description": "Older flat form. Read as a single feature when 'features' is absent or empty.",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "anyOf": [{ "required": ["features"] }, { "required": ["steps"] }],
+  "$defs": {
+    "feature": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Stable id, e.g. 'f1'." },
+        "title": { "type": "string", "description": "Plain text." },
+        "badge": { "type": "string", "description": "Plain text label, e.g. 'VERIFY'." },
+        "ticket": { "type": "string", "description": "Plain text reference, e.g. 'PROJ-123 · #456'." },
+        "tag": { "type": "string", "description": "Free-form grouping, e.g. 'instant' or 'live'." },
+        "url": { "type": "string", "description": "App path to open for this feature." },
+        "intro": { "type": "string", "description": "One sentence. GitHub-flavoured Markdown." },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "pass": { "type": "string", "description": "The yes/no pass criterion. Plain text." },
+        "note": { "type": "string", "description": "Optional caveat. GitHub-flavoured Markdown." }
+      }
+    },
+    "step": {
+      "oneOf": [
+        { "type": "string", "description": "A plain step. GitHub-flavoured Markdown." },
+        {
+          "type": "object",
+          "required": ["text"],
+          "properties": {
+            "text": { "type": "string", "description": "The step. GitHub-flavoured Markdown." },
+            "copy": { "type": "array", "items": { "$ref": "#/$defs/copyBlock" } }
+          }
+        }
+      ]
+    },
+    "copyBlock": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "kind": { "type": "string", "description": "e.g. 'prompt' or 'command'." },
+        "label": { "type": "string", "description": "Short label shown on the copy button." },
+        "text": { "type": "string", "description": "The exact text to copy." }
+      }
+    }
+  }
+}

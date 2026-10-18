@@ -1,0 +1,4 @@
+node_modules/
+dist/
+untracked/
+.e2e/

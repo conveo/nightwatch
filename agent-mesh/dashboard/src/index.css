@@ -1,0 +1,373 @@
+@import "tailwindcss";
+
+/* ── agent-mesh console — refined warm dev-ops aesthetic, light + dark ────────
+   One confident amber accent, monospace-forward for all the data (ids, stream
+   ids, payloads) so the whole surface reads like a precise message bus. */
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* ── light (default) ── */
+:root {
+  --background: oklch(0.965 0.004 85);
+  --foreground: oklch(0.22 0.014 70);
+
+  --card: oklch(0.998 0.002 85);
+  --card-foreground: oklch(0.22 0.014 70);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.014 70);
+
+  --primary: oklch(0.685 0.16 64);
+  --primary-foreground: oklch(0.99 0.01 85);
+
+  --secondary: oklch(0.935 0.005 80);
+  --secondary-foreground: oklch(0.26 0.013 70);
+
+  --muted: oklch(0.94 0.004 80);
+  --muted-foreground: oklch(0.45 0.016 72);
+
+  --accent: oklch(0.915 0.008 78);
+  --accent-foreground: oklch(0.22 0.014 70);
+
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0.01 85);
+
+  --border: oklch(0.84 0.008 78);
+  --input: oklch(0.82 0.008 78);
+  --ring: oklch(0.685 0.16 64);
+
+  --status-online: oklch(0.62 0.16 152);
+  --status-dead: oklch(0.57 0.21 25);
+  --status-stale: oklch(0.68 0.14 70);
+  --status-offline: oklch(0.6 0.012 72);
+
+  --radius: 0.625rem;
+}
+
+/* ── dark (soft charcoal, not near-black) ── */
+.dark {
+  --background: oklch(0.195 0.005 70);
+  --foreground: oklch(0.96 0.01 80);
+
+  --card: oklch(0.255 0.007 70);
+  --card-foreground: oklch(0.96 0.01 80);
+  --popover: oklch(0.275 0.007 70);
+  --popover-foreground: oklch(0.97 0.01 80);
+
+  --primary: oklch(0.81 0.14 73);
+  --primary-foreground: oklch(0.2 0.03 70);
+
+  --secondary: oklch(0.305 0.008 70);
+  --secondary-foreground: oklch(0.95 0.01 80);
+
+  --muted: oklch(0.275 0.007 70);
+  --muted-foreground: oklch(0.74 0.014 75);
+
+  --accent: oklch(0.335 0.011 73);
+  --accent-foreground: oklch(0.97 0.01 80);
+
+  --destructive: oklch(0.66 0.21 22);
+  --destructive-foreground: oklch(0.97 0.01 80);
+
+  --border: oklch(0.41 0.009 70);
+  --input: oklch(0.43 0.01 70);
+  --ring: oklch(0.81 0.14 73);
+
+  --status-online: oklch(0.74 0.15 152);
+  --status-dead: oklch(0.64 0.2 22);
+  --status-stale: oklch(0.8 0.13 75);
+  --status-offline: oklch(0.55 0.01 70);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-status-online: var(--status-online);
+  --color-status-dead: var(--status-dead);
+  --color-status-stale: var(--status-stale);
+  --color-status-offline: var(--status-offline);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* subtle top-lit glow so flat panels gain depth — adapts to the active theme */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 60%),
+      radial-gradient(100% 60% at 100% 0%, color-mix(in oklch, var(--status-online) 4%, transparent), transparent 55%);
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 28%, transparent);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--foreground) 18%, transparent);
+    border-radius: 9999px;
+    border: 2px solid var(--background);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--foreground) 30%, transparent);
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* JSON syntax tint — mid-lightness so it reads on both themes */
+  .json-key {
+    color: var(--muted-foreground);
+  }
+  .json-str {
+    color: oklch(0.62 0.13 162);
+  }
+  .json-num {
+    color: oklch(0.62 0.15 255);
+  }
+  .json-bool {
+    color: var(--primary);
+  }
+  /* message direction — sender vs recipient, legible on both themes */
+  .msg-from {
+    color: oklch(0.62 0.14 245);
+  }
+  .msg-to {
+    color: oklch(0.62 0.16 162);
+  }
+  .dark .json-str {
+    color: oklch(0.74 0.13 162);
+  }
+  .dark .json-num {
+    color: oklch(0.74 0.14 255);
+  }
+  .dark .msg-from {
+    color: oklch(0.74 0.13 245);
+  }
+  .dark .msg-to {
+    color: oklch(0.76 0.15 162);
+  }
+  @keyframes meshpulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+  .animate-meshpulse {
+    animation: meshpulse 2.4s ease-in-out infinite;
+  }
+  @keyframes meshin {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-in-soft {
+    animation: meshin 0.22s ease-out both;
+  }
+  /* opacity-only — safe for floating-ui positioned elements (a transform on the
+     floating element throws off its measured rect). */
+  @keyframes meshfade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .animate-fade {
+    animation: meshfade 0.14s ease-out both;
+  }
+}
+
+/* ── Plans tab: comment highlight + rendered-markdown typography ───────────── */
+::highlight(plan-comment) {
+  background: color-mix(in oklch, var(--primary) 24%, transparent);
+}
+#plan-doc img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: var(--radius);
+}
+#plan-doc img.commented {
+  outline: 2px solid color-mix(in oklch, var(--primary) 55%, transparent);
+  outline-offset: 2px;
+}
+.plan-md {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.plan-md > * { margin: 0; }
+.plan-md h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.plan-md h2 { font-size: 20px; font-weight: 600; margin-top: 6px; }
+.plan-md h3 { font-size: 16px; font-weight: 600; }
+.plan-md ul, .plan-md ol { padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.plan-md a { color: var(--primary); }
+.plan-md code { background: var(--muted); padding: 1px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px; }
+.plan-md pre { background: var(--muted); padding: 12px; border-radius: var(--radius); overflow: auto; }
+.plan-md pre code { background: none; padding: 0; }
+.plan-md hr { border: 0; border-top: 1px solid var(--border); }
+.plan-md blockquote { padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted-foreground); }
+.plan-md table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.plan-md th, .plan-md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+.plan-md th { background: color-mix(in oklch, var(--card) 70%, transparent); }
+
+/* ── mobile console ───────────────────────────────────────────────────────────
+   Only the phone build uses these. The desktop dashboard never mounts
+   `.mesh-mobile`, so nothing here can reach it. */
+
+.mesh-mobile {
+  /* 100dvh, not 100vh: iOS Safari's vh is the tallest the viewport ever gets, so
+     a vh-sized app hides its own composer behind the URL bar until you scroll. */
+  height: 100dvh;
+  /* A rubber-band scroll on the page drags the whole app under the status bar and
+     makes a fixed composer look broken; contain it to the panes that scroll. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mesh-mobile .mesh-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safari zooms the page when a focused input's text is under 16px, and never
+   zooms back out. Every control the thumb can land on stays at 16px. */
+.mesh-mobile input,
+.mesh-mobile textarea,
+.mesh-mobile select {
+  font-size: 16px;
+}
+
+.mesh-safe-top {
+  padding-top: max(env(safe-area-inset-top), 0.5rem);
+}
+.mesh-safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+
+/* The mic's living state: a slow breath while listening, a faster pulse while the
+   model is talking back. Both respect a reduced-motion preference. */
+@keyframes meshbreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 14px color-mix(in oklch, var(--primary) 0%, transparent);
+  }
+}
+.animate-meshbreathe {
+  animation: meshbreathe 2.6s ease-out infinite;
+}
+.animate-meshbreathe-fast {
+  animation: meshbreathe 1.1s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-meshbreathe,
+  .animate-meshbreathe-fast,
+  .animate-meshpulse {
+    animation: none;
+  }
+}
+
+/* Markdown coming out of the assistant (Streamdown) — tuned for a 390px column. */
+.mesh-mobile .mesh-prose > * {
+  margin: 0;
+}
+.mesh-mobile .mesh-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.mesh-mobile .mesh-prose ul,
+.mesh-mobile .mesh-prose ol {
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mesh-mobile .mesh-prose code {
+  background: var(--muted);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.mesh-mobile .mesh-prose pre {
+  background: var(--muted);
+  padding: 10px;
+  border-radius: var(--radius);
+  overflow: auto;
+}
+.mesh-mobile .mesh-prose pre code {
+  background: none;
+  padding: 0;
+}
+.mesh-mobile .mesh-prose a {
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}

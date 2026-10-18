@@ -1,0 +1,66 @@
+// The mobile console's own database.
+//
+// SQLite, inside this package, on this host. Deliberately not a shared database server:
+// the console is a single-operator tool, its tables belong to nothing else, and a file
+// next to the daemon's other state needs no setup and cannot be pointed at another
+// app's migrations.
+//
+// The file lives in ~/.agent-mesh alongside the daemon's other local state. It holds
+// what the operator and the assistant said to each other, so it stays on this host: nothing
+// here is shipped anywhere, and message bodies are never logged.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/console-db"
+}
+
+// Prisma 7 no longer accepts `url` here — the connection lives in prisma.config.ts
+// for the CLI, and in a driver adapter for the client (see console-db.ts).
+datasource db {
+  provider = "sqlite"
+}
+
+/// One console conversation. There is normally exactly one (`default`), but the id is
+/// explicit so a second surface — or a second operator identity — never has to share it.
+model Conversation {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+}
+
+/// One UIMessage, stored as the AI SDK's own JSON so the transcript round-trips exactly
+/// — parts, tool calls, results and all. Re-deriving a UIMessage from a normalised
+/// schema would quietly drop the tool parts that make the thread readable.
+model Message {
+  id             String   @id
+  conversationId String
+  /// Position in the thread. Stream ids are not available for locally-authored turns,
+  /// so ordering is explicit rather than inferred.
+  seq            Int
+  /// The AI SDK's UIMessage.role — user | assistant | system — and nothing else. It is
+  /// the SDK's vocabulary, not ours: encoding an agent identity here would send an
+  /// invalid role to the model and hand every component that branches on it a value it
+  /// has never seen. WHO said it lives in `author`.
+  role           String
+  /// Agent id for a participant turn; null for the operator and for the console assistant.
+  /// This is what makes the console a room rather than a relay: an agent reply is a
+  /// first-class turn with an identity, not an event something else narrated.
+  author         String?
+  /// The request this turn answers, so a reply renders against its question instead of
+  /// arriving as unattributed news.
+  correlationId  String?
+  /// Serialised UIMessage.
+  payload        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  /// Cascade, not SetNull: a message is meaningless without its conversation, and a
+  /// row that no longer resolves to one would just be unreachable clutter.
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, seq])
+  @@index([conversationId])
+  @@index([correlationId])
+}

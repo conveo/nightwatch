@@ -1,0 +1,24 @@
+{
+  "name": "nightwatch",
+  "private": true,
+  "license": "MIT",
+  "description": "A message bus and agent skills for running a fleet of coding agents overnight.",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "daemon": "pnpm --dir agent-mesh daemon",
+    "cli": "pnpm --dir agent-mesh cli",
+    "ui": "pnpm --dir agent-mesh ui",
+    "build": "pnpm --dir agent-mesh build",
+    "typecheck": "pnpm --dir agent-mesh typecheck",
+    "test": "pnpm --dir agent-mesh test",
+    "verify": "./agent-mesh/verify.sh",
+    "dashboard:build": "pnpm --dir agent-mesh ui:build",
+    "overlay": "pnpm --dir reviewer-overlay start"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}

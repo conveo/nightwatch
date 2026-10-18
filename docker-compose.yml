@@ -1,0 +1,23 @@
+# A local Redis broker for trying the mesh on one machine.
+#
+#   docker compose up -d        # Redis on 127.0.0.1:6379
+#   docker compose down         # stop it (data is not persisted)
+#
+# Set AGENT_MESH_REDIS_PORT to use another host port, for example when 6379 is taken:
+#   AGENT_MESH_REDIS_PORT=6390 docker compose up -d
+#
+# For several hosts, use a Redis that all of them can reach instead (see docs/DEPLOY.md).
+services:
+  redis:
+    image: redis:7.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${AGENT_MESH_REDIS_PORT:-6379}:6379"
+    # The default bridge network is enough for one service, and it does not use up
+    # one of Docker's address pools the way a per-project network does.
+    network_mode: bridge
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15

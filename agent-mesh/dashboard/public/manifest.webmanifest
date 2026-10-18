@@ -1,0 +1,14 @@
+{
+  "name": "agent-mesh console",
+  "short_name": "mesh",
+  "description": "Talk to your agent mesh, by text and by voice.",
+  "start_url": "/?view=console",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1a1916",
+  "theme_color": "#1a1916",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

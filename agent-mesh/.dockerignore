@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+demo.sh
+# Regenerated inside the image by the postinstall step.
+src/generated

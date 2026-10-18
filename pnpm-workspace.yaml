@@ -1,0 +1,17 @@
+# The repo root is the pnpm workspace for the agent-mesh daemon and CLI, and the
+# reviewer overlay. agent-mesh/dashboard is a separate workspace with its own
+# lockfile, so a daemon install never pulls the dashboard's UI dependencies.
+packages:
+  - agent-mesh
+  - reviewer-overlay
+
+# tsx bundles esbuild, and the reviewer overlay builds its client with esbuild.
+# esbuild downloads its platform binary in a postinstall step. The mesh console
+# keeps its transcript in SQLite through Prisma: better-sqlite3 builds or
+# downloads a native binding, and Prisma fetches its engines.
+allowBuilds:
+  esbuild: true
+  better-sqlite3: true
+  prisma: true
+  "@prisma/engines": true
+  "@prisma/client": true

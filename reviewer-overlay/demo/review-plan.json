@@ -1,0 +1,32 @@
+{
+  "title": "Settings page · verify",
+  "subtitle": "Demo plan. The overlay reads it from the file passed with `--plan`.",
+  "features": [
+    {
+      "id": "f1",
+      "title": "Save button label",
+      "badge": "VERIFY",
+      "ticket": "demo-1",
+      "tag": "instant",
+      "url": "/",
+      "intro": "The save button should show its **full** label.",
+      "steps": [
+        "Look at the green save button under the form.",
+        "Drop a pin on the label if it is cut off, and say what you see.",
+        {
+          "text": "Check the label text in the source:",
+          "copy": [{ "kind": "command", "label": "shell", "text": "grep -n 'Save all' demo/index.html" }]
+        }
+      ],
+      "pass": "The whole label is readable without truncation.",
+      "note": "Narrow windows may wrap the header; that is out of scope."
+    },
+    {
+      "id": "f2",
+      "title": "Digest options",
+      "badge": "VERIFY",
+      "steps": ["Open the Email digest menu.", "Confirm it lists Daily, Weekly and Never."],
+      "pass": "Three options, in that order."
+    }
+  ]
+}

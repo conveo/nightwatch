@@ -1,0 +1,72 @@
+{
+  "title": "Saved filters · verify",
+  "subtitle": "PR #456 · signed in as **demo@example.com** (admin) · seeded with `node scripts/seed-review.mjs`",
+  "appBase": "http://localhost:3000",
+  "features": [
+    {
+      "id": "f1",
+      "title": "Save a filter",
+      "badge": "VERIFY",
+      "ticket": "PROJ-101 · #456",
+      "tag": "instant",
+      "url": "/orders?status=open",
+      "intro": "A user can save the current order filter under a name and see it in the sidebar.",
+      "steps": [
+        "Open the page with the button below. The table shows **12 open orders** (seeded).",
+        "Click **Save filter**, type `Open orders`, press Enter.",
+        "The sidebar now lists **Open orders** under *Saved filters*.",
+        {
+          "text": "Check that the row was stored. Run this:",
+          "copy": [
+            {
+              "kind": "command",
+              "label": "shell",
+              "text": "sqlite3 dev.db \"SELECT name, query FROM saved_filter ORDER BY created_at DESC LIMIT 1;\""
+            }
+          ]
+        }
+      ],
+      "pass": "The sidebar shows the filter and the newest saved_filter row is 'Open orders | status=open'."
+    },
+    {
+      "id": "f2",
+      "title": "Reload keeps the filter",
+      "badge": "VERIFY",
+      "ticket": "PROJ-102 · #456",
+      "tag": "instant",
+      "url": "/orders",
+      "intro": "A saved filter survives a reload and opens the same result set.",
+      "steps": [
+        "Reload the page.",
+        "Click **Open orders** in the sidebar.",
+        "The URL becomes `/orders?status=open` and the table shows the same 12 orders."
+      ],
+      "pass": "After a reload, the saved filter opens the same 12 orders."
+    },
+    {
+      "id": "f3",
+      "title": "Assistant creates a filter",
+      "badge": "VERIFY",
+      "ticket": "PROJ-103 · #456",
+      "tag": "live",
+      "url": "/orders",
+      "intro": "The in-app assistant can propose a filter. Accepting it must save a complete filter, not only show a preview.",
+      "steps": [
+        {
+          "text": "Open the assistant and send this prompt:",
+          "copy": [
+            {
+              "kind": "prompt",
+              "label": "Assistant prompt",
+              "text": "Save a filter called 'Late orders' for orders that are open and past their due date."
+            }
+          ]
+        },
+        "Click **Accept** on the proposal.",
+        "Reload the page and open **Late orders** from the sidebar."
+      ],
+      "pass": "After accepting and reloading, 'Late orders' shows exactly the 3 seeded overdue orders.",
+      "note": "Needs an assistant API key in `.env`. Without it, mark this feature blocked."
+    }
+  ]
+}

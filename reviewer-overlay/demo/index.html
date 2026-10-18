@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo app · Settings</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font: 15px/1.5 Georgia, serif; background: #f6f3ee; color: #222; }
+      header { display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; background: #1f3a5f; color: #fff; }
+      header nav a { color: #cfe0f5; margin-left: 16px; }
+      main { max-width: 760px; margin: 32px auto; padding: 0 16px; }
+      .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 24px; margin-bottom: 24px; }
+      label { display: block; font-weight: 600; margin: 12px 0 4px; }
+      input, select { width: 100%; padding: 8px; font: inherit; border: 1px solid #bbb; border-radius: 6px; }
+      button.save { margin-top: 16px; width: 140px; padding: 10px; background: #2f7d4f; color: #fff; border: 0; border-radius: 6px; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* Deliberately hostile global rules: the overlay must not be affected. */
+      div { letter-spacing: 0.02em; }
+      button { text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Demo app</strong>
+      <nav><a href="/">Home</a><a href="/">Billing</a><a href="/">Settings</a></nav>
+    </header>
+    <main>
+      <section class="card" id="profile">
+        <h1>Settings</h1>
+        <p>Change how your workspace looks and who gets notified.</p>
+        <label for="name">Workspace name</label>
+        <input id="name" value="North team" />
+        <label for="digest">Email digest</label>
+        <select id="digest"><option>Daily</option><option>Weekly</option><option>Never</option></select>
+        <button class="save" id="save" type="button">Save all workspace changes</button>
+      </section>
+      <section class="card">
+        <h2>Danger zone</h2>
+        <p>Deleting the workspace removes all projects. This cannot be undone.</p>
+      </section>
+    </main>
+    <!-- One tag adds the reviewer overlay. The server's origin is read from src. -->
+    <script src="http://127.0.0.1:4848/reviewer-overlay.js" defer></script>
+  </body>
+</html>

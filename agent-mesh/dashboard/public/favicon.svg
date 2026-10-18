@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="m" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2B441"/>
+      <stop offset="1" stop-color="#E55425"/>
+    </linearGradient>
+    <radialGradient id="c" cx="12" cy="12" r="3" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD884"/>
+      <stop offset="1" stop-color="#F2B441"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="12" cy="12" r="9" stroke="url(#m)" stroke-width="0.85" opacity="0.7" fill="none"/>
+  <g transform="rotate(45 12 12)">
+    <g stroke="url(#m)" stroke-width="0.85" opacity="0.6" fill="none">
+      <ellipse cx="12" cy="12" rx="9" ry="3.4"/>
+      <ellipse cx="12" cy="12" rx="3.4" ry="9"/>
+    </g>
+    <g fill="#FFCB72">
+      <circle cx="3" cy="12" r="1.6"/>
+      <circle cx="21" cy="12" r="1.6"/>
+      <circle cx="12" cy="3" r="1.6"/>
+      <circle cx="12" cy="21" r="1.6"/>
+    </g>
+  </g>
+
+  <circle cx="12" cy="12" r="2.8" fill="#F2B441" opacity="0.25"/>
+  <circle cx="12" cy="12" r="1.7" fill="url(#c)"/>
+</svg>

@@ -1,0 +1,44 @@
+{
+  "name": "agent-mesh",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "description": "Hubless agent-to-agent comms for Claude Code and Codex CLI agents: a per-host daemon over a shared Redis broker, addressing by agent id",
+  "type": "module",
+  "bin": {
+    "agent-mesh": "dist/cli.js"
+  },
+  "scripts": {
+    "daemon": "tsx --env-file-if-exists=.env src/daemon.ts",
+    "cli": "tsx --env-file-if-exists=.env src/cli.ts",
+    "ui": "pnpm run ui:build && tsx --env-file-if-exists=.env src/ui-server.ts",
+    "ui:deps": "pnpm --dir dashboard install --frozen-lockfile",
+    "ui:build": "pnpm run ui:deps && pnpm --dir dashboard build",
+    "ui:dev": "pnpm --dir dashboard dev",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/test/run.ts",
+    "test:resilience": "tsx src/test/test-resilience.ts",
+    "smoke": "tsx src/test/console-smoke.mts",
+    "postinstall": "prisma generate",
+    "verify": "./verify.sh"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "4.0.65",
+    "@prisma/adapter-better-sqlite3": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@prisma/client-runtime-utils": "7.10.0",
+    "ai": "7.0.97",
+    "redis": "^5.9.0",
+    "web-push": "3.6.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "jsdom": "^30.0.1",
+    "@types/web-push": "^3.6.4",
+    "prisma": "7.10.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}

@@ -1,0 +1,21 @@
+# Example denylist for scripts/sync/denylist-gate.pl.
+#
+# Copy this file to scripts/sync/denylist.local.txt (gitignored) or anywhere outside
+# the repo, and add the private strings this repo must never contain: people, hosts,
+# account ids, customer names, internal URLs. Do not commit the real list.
+#
+# Format
+#   One Perl regex per line. Case-insensitive unless the line starts with (?-i).
+#   Lines starting with # and blank lines are ignored.
+#   allow<TAB>path-regex<TAB>line-regex<TAB>justification
+#     accepts a hit when the repo-relative path and the line both match.
+#     In --history mode the path of an author/committer line is "(identity)".
+#
+# Token shapes (these are safe to publish):
+gh[opsu]_
+github_pat_
+xox[abp]-
+xapp-
+(?-i)AKIA
+sk-ant-
+(?-i)\bU0[A-Z0-9]{8,}
