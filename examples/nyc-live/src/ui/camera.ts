@@ -164,6 +164,33 @@ export function interpolatePose(from: Pose, to: Pose, t: number): Pose {
   }
 }
 
+// How often the URL follows a moving camera.
+export const FOLLOW_MS = 250
+
+// Keeps the URL with a moving camera. Damping keeps the camera gliding for seconds
+// after a fast pan or a flick, so saving the view only once it settles would leave the
+// URL, and a review note sent meanwhile, on the previous view. Instead `save` runs at
+// most every `everyMs` while the camera moves, at once when a drag ends, and once more
+// `everyMs` after the last movement, so the URL is never more than `everyMs` behind.
+export function followCamera(save: () => void, everyMs = FOLLOW_MS, now: () => number = () => Date.now()): { moved(): void; ended(): void } {
+  let last = -Infinity
+  let trailing: ReturnType<typeof setTimeout> | undefined
+  const saveNow = (): void => {
+    clearTimeout(trailing)
+    trailing = undefined
+    last = now()
+    save()
+  }
+  return {
+    moved() {
+      if (now() - last >= everyMs) saveNow()
+      clearTimeout(trailing)
+      trailing = setTimeout(saveNow, everyMs)
+    },
+    ended: saveNow,
+  }
+}
+
 export const MIN_FLIGHT_MS = 700
 export const MAX_FLIGHT_MS = 2400
 

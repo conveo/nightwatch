@@ -12,6 +12,7 @@ import {
 import { MapControls } from "three/addons/controls/MapControls.js"
 import { mountAskPanel } from "./ask/panel.ts"
 import { createLayers } from "./layers/index.ts"
+import { followCamera } from "./ui/camera.ts"
 import { mountControls } from "./ui/controls.ts"
 import { parseViewState, serializeViewState, type Light, type Vec3, type ViewState } from "./view-state.ts"
 import "./style.css"
@@ -38,7 +39,7 @@ scene.add(sky, sun)
 
 const LIGHTING: Record<Light, { background: number; sky: number; ground: number; skyI: number; sun: number; sunI: number }> = {
   day: { background: 0x0b1020, sky: 0xbfd4ff, ground: 0x1a1f2e, skyI: 1.2, sun: 0xffffff, sunI: 1.6 },
-  night: { background: 0x03050b, sky: 0x40507a, ground: 0x05070d, skyI: 0.5, sun: 0x9fb4ff, sunI: 0.35 },
+  night: { background: 0x03050b, sky: 0x5a6a9a, ground: 0x0a0d18, skyI: 0.8, sun: 0x9fb4ff, sunI: 0.5 },
 }
 
 function applyLighting(light: Light): void {
@@ -91,13 +92,11 @@ function setView(next: ViewState): void {
 
 applyView(view)
 for (const layer of layers) layer.select?.(view.sel)
-// Damping keeps the camera moving after the pointer is released ("end"), so save the
-// view once the movement has settled, not when the drag ends.
-let settle: ReturnType<typeof setTimeout> | undefined
-controls.addEventListener("change", () => {
-  clearTimeout(settle)
-  settle = setTimeout(captureCamera, 300)
-})
+// Damping keeps the camera moving for seconds after the pointer is released ("end"),
+// so the URL follows it while it glides, not only once it has settled.
+const follow = followCamera(captureCamera)
+controls.addEventListener("change", follow.moved)
+controls.addEventListener("end", follow.ended)
 // A hash that keeps the view's camera (the ask panel changing only the selection)
 // keeps the live camera too, rather than snapping back to the last saved position,
 // which lags a moving camera. The hash rounds positions to 0.1 m.

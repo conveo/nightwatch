@@ -10,7 +10,7 @@ import {
   SRGBColorSpace,
   Vector3,
 } from "three"
-import { SUBWAY_DEPTH_M } from "../constants.ts"
+import { SUBWAY_DEPTH_M, TRAINS_XRAY_OPACITY } from "../constants.ts"
 import { loadSubwayData, pointAlong, stationId, toPath, type Path, type SubwayData, type SubwayShape } from "./subway.ts"
 import type { Layer, LayerContext } from "./types.ts"
 
@@ -277,6 +277,21 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
   // The blocks move every frame; their bounds would always be stale.
   mesh.frustumCulled = false
   group.add(mesh)
+  // The same blocks again, see-through and on top of everything, so a train under the
+  // buildings still shows. They share the blocks' positions and colours.
+  mesh.setColorAt(0, WHITE)
+  const xray = new InstancedMesh(
+    mesh.geometry,
+    new MeshBasicMaterial({ transparent: true, opacity: TRAINS_XRAY_OPACITY, depthTest: false, depthWrite: false }),
+    MAX_TRAINS,
+  )
+  xray.name = "train-blocks-xray"
+  xray.instanceMatrix = mesh.instanceMatrix
+  xray.instanceColor = mesh.instanceColor
+  xray.count = 0
+  xray.frustumCulled = false
+  xray.renderOrder = 3
+  mesh.add(xray)
   let loaded = false
   let drawn = 0
   // The scene's clock in fixture and recorded mode: Unix seconds `t` at performance
@@ -357,6 +372,7 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       drawn++
     }
     mesh.count = drawn
+    xray.count = drawn
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor != null) mesh.instanceColor.needsUpdate = true
   }

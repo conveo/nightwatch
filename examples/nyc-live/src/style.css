@@ -32,9 +32,17 @@ body {
   top: 16px;
   left: 16px;
   padding: 12px 16px;
+  /* Clear of the ask panel at the top right: the status line wraps instead. */
+  max-width: min(760px, calc(100vw - 484px));
   border-radius: 10px;
   background: var(--panel);
   pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  #hud {
+    max-width: calc(100vw - 32px);
+  }
 }
 
 #hud h1 {

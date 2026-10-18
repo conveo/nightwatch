@@ -7,10 +7,11 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   type Raycaster,
 } from "three"
-import { SUBWAY_DEPTH_M, type AREA } from "../constants.ts"
+import { SUBWAY_DEPTH_M, SUBWAY_XRAY_OPACITY, type AREA } from "../constants.ts"
 import { toLocal, type Local } from "../geo.ts"
 import type { Layer, LayerContext } from "./types.ts"
 
@@ -298,6 +299,15 @@ export function createSubwayLayer(load: (ctx: LayerContext) => Promise<SubwayDat
         )
         mesh.name = `route:${route.id}`
         mesh.userData = { route: route.id }
+        // The same tube again, faint and on top of everything, so the line shows
+        // through the buildings above it. A child, so picking and toggles follow it.
+        const xray = new Mesh(
+          mesh.geometry,
+          new MeshBasicMaterial({ color: route.color, transparent: true, opacity: SUBWAY_XRAY_OPACITY, depthTest: false, depthWrite: false }),
+        )
+        xray.name = `xray:${route.id}`
+        xray.renderOrder = 2
+        mesh.add(xray)
         lines.set(route.id, mesh)
         group.add(mesh)
         // The diamond expresses (6X, 7X, FX) are the same line on a map.
@@ -342,6 +352,8 @@ export function createSubwayLayer(load: (ctx: LayerContext) => Promise<SubwayDat
         mesh.material.opacity = dim ? 0.2 : 1
         mesh.material.emissiveIntensity = highlight && rid === route ? 0.9 : 0.45
         mesh.material.needsUpdate = true
+        const xray = mesh.children[0] as Mesh<BufferGeometry, MeshBasicMaterial>
+        xray.material.opacity = dim ? SUBWAY_XRAY_OPACITY * 0.3 : highlight ? Math.min(SUBWAY_XRAY_OPACITY * 2, 1) : SUBWAY_XRAY_OPACITY
       }
       if (stations != null) {
         const stop = id?.startsWith("stop:") ? id.slice("stop:".length) : null

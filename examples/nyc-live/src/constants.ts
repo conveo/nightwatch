@@ -20,6 +20,12 @@ export function inArea(p: LatLon): boolean {
 export const SUBWAY_DEPTH_M = -12
 export const GROUND_OPACITY = 0.82
 
+// The subway's tubes and its trains are drawn a second time, see-through and over
+// everything else, so they read through the buildings and the ground from any angle,
+// at night too. Trains are what moves, so they show the most.
+export const SUBWAY_XRAY_OPACITY = 0.28
+export const TRAINS_XRAY_OPACITY = 0.85
+
 // Fixtures under public/fixtures/ cover a smaller box around the venue, so tests and
 // screenshots load in under a second without network.
 export const FIXTURE_RADIUS_M = 400
