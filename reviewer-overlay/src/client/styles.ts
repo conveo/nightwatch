@@ -127,7 +127,7 @@ button { cursor: pointer; }
   border-bottom: 2px solid var(--accent);
 }
 .panel-tab .icon { width: 12px; height: 12px; }
-.panel-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.panel-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-wrap: anywhere; }
 .panel-foot { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 16px; border-top: 1px solid var(--line); }
 .panel-foot .btn { width: 100%; padding: 9px 12px; }
 .target { display: flex; flex-direction: column; gap: 6px; }
@@ -138,7 +138,7 @@ button { cursor: pointer; }
 }
 .target input:focus { outline: none; border-color: var(--fg); }
 
-.plan-title { font-weight: 600; font-size: 16px; line-height: 1.3; color: var(--fg); }
+.plan-title { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 16px; line-height: 1.3; color: var(--fg); }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 .plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -207,7 +207,7 @@ a.link:hover { background: var(--line); }
 .marks { position: fixed; inset: 0; z-index: 2; pointer-events: none; width: 100vw; height: 100vh; overflow: visible; }
 .marks .pin { filter: drop-shadow(2px 3px 3px rgba(0,0,0,.3)); }
 .toolbar {
-  position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 3;
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 5;
   display: flex; align-items: center; gap: 4px; padding: 5px 6px; max-width: calc(100vw - 24px); flex-wrap: wrap;
   background: var(--ink); color: var(--ink-fg); border-radius: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.22);
   font-size: 12.5px;
@@ -223,10 +223,15 @@ a.link:hover { background: var(--line); }
 }
 .toolbar .sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--ink-line); }
 .toolbar .status { flex-basis: 100%; padding: 2px 10px 4px; color: var(--ink-fg); }
+/* The toolbar sits above the docked panel, and centres in the space beside it
+   when the window leaves enough room. */
+@media (min-width: 900px) {
+  .root.panel-open .toolbar { left: calc(50% - min(360px, 100vw) / 2); max-width: calc(100vw - min(360px, 100vw) - 24px); }
+}
 .toolbar .status.error { color: #ff8a80; }
 .toolbar .status.success { color: #7ee2a0; }
 .composer {
-  position: fixed; z-index: 5; width: 320px; max-width: calc(100vw - 24px);
+  position: fixed; z-index: 6; width: 320px; max-width: calc(100vw - 24px);
   display: flex; flex-direction: column; gap: 12px; padding: 16px;
   background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
 }

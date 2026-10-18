@@ -9,7 +9,7 @@
     {
       "type": "score",
       "name": "panel_matches_reference",
-      "score": 1.91,
+      "score": 1.94,
       "probabilities": [
         {
           "value": 0,
@@ -19,12 +19,12 @@
         {
           "value": 1,
           "label": "loosely similar",
-          "probability": 0.09
+          "probability": 0.06
         },
         {
           "value": 2,
           "label": "close",
-          "probability": 0.91
+          "probability": 0.94
         },
         {
           "value": 3,
@@ -32,7 +32,7 @@
           "probability": 0
         }
       ],
-      "confidence": 0.91
+      "confidence": 0.94
     }
   ]
 }

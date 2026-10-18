@@ -904,6 +904,7 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
   }
 
   function render() {
+    root.className = state.open ? "root panel-open" : "root"
     bubble.hidden = state.open
     panel.hidden = !state.open
     targetRow.hidden = state.config?.canChooseTarget !== true

@@ -24,6 +24,15 @@
       "path": "test/fixtures/t10-panel.png"
     }
   ],
+  "look": {
+    "files": [
+      "src/client/styles.ts",
+      "src/client/annotate.ts",
+      "src/client/mark.ts",
+      "src/client/icons.ts"
+    ],
+    "sha256": "b95875e276a9cbef0908c3eb9ef1cd229a85d66ae546f3ba808307f3a0da65f4"
+  },
   "checks": [
     {
       "type": "predicate",
@@ -35,7 +44,20 @@
       "type": "score",
       "name": "panel_matches_reference",
       "instructions": "How closely do the layout and colours of the overlay panel in Candidate B match the sidebar in Reference B? Judge structure, spacing, typography and colours.",
-      "levels": [{ "label": "different" }, { "label": "loosely similar" }, { "label": "close" }, { "label": "very close" }],
+      "levels": [
+        {
+          "label": "different"
+        },
+        {
+          "label": "loosely similar"
+        },
+        {
+          "label": "close"
+        },
+        {
+          "label": "very close"
+        }
+      ],
       "minLevel": "close"
     }
   ]

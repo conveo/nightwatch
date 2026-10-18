@@ -10,6 +10,11 @@
 // the request with every image replaced by its sha256, so --replay needs neither
 // the references nor a key. Exits 0 when every check passes, 1 when one fails,
 // 2 when the checks could not run.
+//
+// Answers about screenshots of an older look prove nothing, so the check file
+// also fingerprints the files that decide the look (`look`): --replay fails when
+// they changed since the last passing --record, and a passing --record updates
+// the fingerprint. Retake the screenshots before you record again.
 
 import { createHash } from "node:crypto"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -28,6 +33,7 @@ type Spec = {
   context: string
   references: Array<{ name: string; caption: string; sha256: string }>
   shots: Array<{ name: string; caption: string; path: string }>
+  look?: { files: string[]; sha256: string }
   checks: Check[]
 }
 
@@ -39,6 +45,11 @@ type Answer =
 type Part = { type: "input_text"; text: string } | { type: "input_image"; image_url: string }
 
 const sha256 = (data: Buffer | string): string => createHash("sha256").update(data).digest("hex")
+
+// Line endings are normalised so a checkout with CRLF gets the same fingerprint.
+function lookSha256(files: string[]): string {
+  return sha256(files.map((file) => `${file}\0${readFileSync(file, "utf8").replaceAll("\r\n", "\n")}`).join("\0"))
+}
 
 // References first, then shots, each after its caption. `image` returns the
 // image_url for one image: the real data URL, or its hash for the recording key.
@@ -115,6 +126,11 @@ async function main(): Promise<number> {
   const file = join(values.recordings, `${recordingKey(spec, shotHashes)}.json`)
 
   let answers: Answer[]
+  if (values.replay && spec.look != null && lookSha256(spec.look.files) !== spec.look.sha256) {
+    console.log(`FAIL  ${"look_is_current".padEnd(24)} ${spec.look.files.join(", ")} changed since the screenshots were checked`)
+    console.error("retake the screenshots in the check file and run it again with --record")
+    return 1
+  }
   if (values.replay) {
     let text: string
     try {
@@ -172,7 +188,12 @@ async function main(): Promise<number> {
   for (const result of results) {
     console.log(`${result.pass ? "PASS" : "FAIL"}  ${result.name.padEnd(24)} ${result.detail}`)
   }
-  return results.every((result) => result.pass) ? 0 : 1
+  const passed = results.every((result) => result.pass)
+  if (values.record && passed && spec.look != null) {
+    spec.look.sha256 = lookSha256(spec.look.files)
+    writeFileSync(specPath, `${JSON.stringify(spec, null, 2)}\n`)
+  }
+  return passed ? 0 : 1
 }
 
 exit(await main())
