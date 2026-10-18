@@ -15,7 +15,7 @@ import {
 } from "../server/city-state.ts"
 import type { Recording } from "../server/decisions.ts"
 import { BadQuestion, createAskRoutes, parseQuestion, planQuestion, readAnswer } from "../server/routes/ask.ts"
-import { askParam, parseAsk, percent } from "../src/ask/ask-param.ts"
+import { askParam, parseAsk, percent, selectionFor } from "../src/ask/ask-param.ts"
 import type { AskOptions, AskResponse } from "../src/ask/types.ts"
 import { VENUE } from "../src/geo.ts"
 
@@ -264,6 +264,12 @@ test("a question in the URL survives a round trip", () => {
     assert.deepEqual(parseAsk(askParam(q)), q)
   }
   for (const bad of [null, "", "route", "route:", "weather:sunny"]) assert.equal(parseAsk(bad), null, String(bad))
+})
+
+test("a line answer selects its subway route in the scene; others select nothing", () => {
+  assert.equal(selectionFor("line:6"), "route:6")
+  assert.equal(selectionFor("line:R/W"), "route:R")
+  for (const other of ["citibike", "walk", "line:", null]) assert.equal(selectionFor(other), null, String(other))
 })
 
 // test/fixtures/ask.png is a real screenshot of the panel answering a route

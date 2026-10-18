@@ -1,5 +1,5 @@
 import { parseViewState, serializeViewState, type ViewState } from "../view-state.ts"
-import { askParam, parseAsk, percent } from "./ask-param.ts"
+import { askParam, parseAsk, percent, selectionFor } from "./ask-param.ts"
 import type { AskOptions, AskQuestion, AskResponse, AskTemplate } from "./types.ts"
 import { YESNO_MAX_LENGTH } from "./types.ts"
 import "./panel.css"
@@ -71,6 +71,16 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
   // The question last asked (as in the URL), so a hash change that keeps it does
   // not ask again.
   let asked = getView().ask
+  // The selection the panel last set to highlight an answer, so a later answer
+  // clears only a highlight that is still the panel's own.
+  let highlighted: string | null = null
+
+  // Changes the view through the URL. A fragment navigation fires hashchange, so
+  // main.ts applies it; replace() keeps one history entry, like main.ts's own URL
+  // updates. The URL is the base because it is never behind main.ts's view.
+  function setUrl(change: Partial<ViewState>): void {
+    location.replace(serializeViewState({ ...parseViewState(location.hash), ...change }))
+  }
 
   function showTemplate(): void {
     place.hidden = template.value !== "route"
@@ -138,7 +148,20 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
     status.textContent = ""
   }
 
-  async function ask(q: AskQuestion): Promise<void> {
+  // Highlights the answer in the scene by selecting its subway route. A Citi Bike
+  // or walking answer clears a route the panel selected before, but never a
+  // selection the person made.
+  function highlight(r: AskResponse): void {
+    const current = parseViewState(location.hash).sel
+    const next = selectionFor(r.highlight)
+    const sel = next ?? (current === highlighted ? null : current)
+    highlighted = next
+    if (sel !== current) setUrl({ sel })
+  }
+
+  // Only a question asked from the form changes the selection: one that comes with
+  // the URL keeps the URL's selection, because the URL is the view.
+  async function ask(q: AskQuestion, select = false): Promise<void> {
     inFlight?.abort()
     const controller = new AbortController()
     inFlight = controller
@@ -156,6 +179,7 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
       if (controller !== inFlight) return
       if (!res.ok || "error" in body) throw new Error("error" in body ? body.error : `HTTP ${res.status}`)
       showAnswer(body)
+      if (select) highlight(body)
     } catch (error) {
       if (controller !== inFlight) return
       status.textContent = `Could not ask: ${(error as Error).message}`
@@ -171,12 +195,10 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
     e.preventDefault()
     const q = readForm()
     if (q == null) return
-    // Put the question in the URL with the rest of the view. A fragment navigation
-    // fires hashchange, so main.ts takes it into its view state; replace() keeps
-    // one history entry, like main.ts's own URL updates.
+    // Put the question in the URL with the rest of the view.
     asked = askParam(q)
-    location.replace(serializeViewState({ ...getView(), ask: asked }))
-    void ask(q)
+    setUrl({ ask: asked })
+    void ask(q, true)
   })
 
   // Back to how the panel opens when the URL holds no question: no request

@@ -35,6 +35,15 @@ export function askParam(question: AskQuestion): string {
   }
 }
 
+// The scene selection (`sel`) that highlights an answer: a line answer selects its
+// subway route, which the subway layer highlights while dimming the rest. Lines
+// that share a track ("line:R/W") select the first. Other answers select nothing.
+export function selectionFor(highlight: string | null): string | null {
+  if (highlight == null || !highlight.startsWith("line:")) return null
+  const line = highlight.slice(5).split("/")[0]
+  return line == null || line === "" ? null : `route:${line}`
+}
+
 export function percent(p: number): string {
   return `${Math.round(p * 100)}%`
 }
