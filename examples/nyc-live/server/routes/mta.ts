@@ -94,7 +94,15 @@ export function findSnapshot(dirs: string[], feed: string, t: number): Uint8Arra
   const before = files.filter((f) => f.time <= t).sort((a, b) => b.time - a.time)
   const after = files.filter((f) => f.time > t).sort((a, b) => a.time - b.time)
   for (const { path } of [...before, ...after]) {
-    const data = (JSON.parse(readFileSync(path, "utf8")) as Snapshot).feeds[feed]
+    let snapshot: Snapshot
+    try {
+      snapshot = JSON.parse(readFileSync(path, "utf8")) as Snapshot
+    } catch (error) {
+      // A damaged file is passed over, not fatal: the next one back still plays.
+      console.warn(`${path}: ${(error as Error).message}`)
+      continue
+    }
+    const data = snapshot.feeds?.[feed]
     if (data != null) return Buffer.from(data, "base64")
   }
   return null

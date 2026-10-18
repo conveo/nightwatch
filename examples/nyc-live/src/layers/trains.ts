@@ -153,7 +153,9 @@ const NOT_STARTED_S = 300
 // when it is not on the drawn part of the line. Between two known stops it moves at
 // an even pace from one's departure to the next one's arrival. Before its first known
 // stop it runs in at `speed`, but no further back than the station before it on the
-// shape, which it has left; after the last it runs on at `speed` until it leaves the line.
+// shape, which it has left; or, coming from a station off the line, evenly from that
+// station's departure, entering at the line's start at the latest. After its last
+// known stop it runs on at `speed` until it leaves the line.
 export function positionAt(run: Run, t: number): number | null {
   const { stops, speed } = run
   const next = stops.findIndex((s) => s.arrive > t)
@@ -171,11 +173,15 @@ export function positionAt(run: Run, t: number): number | null {
     d = a.d + ((b.d - a.d) * (t - a.depart)) / (b.arrive - a.depart)
   } else {
     const first = stops[0]!
-    d = first.d - speed * (first.arrive - t)
-    // Still to call at stations outside the line, it has not reached the line yet.
-    if (!run.outsideFirst.some((s) => s.depart > t)) {
+    const outside = run.outsideFirst.at(-1)
+    if (outside != null) {
+      // Still to leave a station off the line, it is not on the line yet.
+      if (t < outside.depart) return null
+      const from = Math.min(first.d - speed * (first.arrive - outside.depart), 0)
+      d = from + ((first.d - from) * (t - outside.depart)) / (first.arrive - outside.depart)
+    } else {
       if (first.arrive - t > NOT_STARTED_S) return null
-      if (run.before != null) d = Math.max(d, run.before)
+      d = Math.max(first.d - speed * (first.arrive - t), run.before ?? -Infinity)
     }
   }
   return d >= 0 && d <= run.path.length ? d : null
@@ -265,18 +271,25 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
   let trips = new Map<string, FeedTrip>()
   let runs: Array<{ route: string; run: Run }> = []
   let failed: string[] = []
-  let mesh: InstancedMesh<BoxGeometry, MeshBasicMaterial> | null = null
+  const mesh = new InstancedMesh(new BoxGeometry(BLOCK.width, BLOCK.height, BLOCK.length), new MeshBasicMaterial(), MAX_TRAINS)
+  mesh.name = "train-blocks"
+  mesh.count = 0
+  // The blocks move every frame; their bounds would always be stale.
+  mesh.frustumCulled = false
+  group.add(mesh)
+  let loaded = false
   let drawn = 0
-  // The scene's clock: Unix seconds at `startedAt` (performance time, ms).
-  let clockStart = 0
-  let startedAt = 0
+  // The scene's clock in fixture and recorded mode: Unix seconds `t` at performance
+  // time `at` (ms). It starts when the first feed arrives.
+  let start: { t: number; at: number } | null = null
   let lastRefresh = 0
   let refreshing = false
 
-  const clock = (perfNow: number): number => {
+  const clock = (perfNow: number): number | null => {
     if (ctx.mode === "live") return now() / 1000
-    const elapsed = (perfNow - startedAt) / 1000
-    return clockStart + (ctx.mode === "fixture" ? elapsed % FIXTURE_LOOP_S : elapsed)
+    if (start == null) return null
+    const elapsed = (perfNow - start.at) / 1000
+    return start.t + (ctx.mode === "fixture" ? elapsed % FIXTURE_LOOP_S : elapsed)
   }
 
   async function load(t: string | null): Promise<void> {
@@ -312,11 +325,25 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
   const p = new Vector3()
   const scale = new Vector3(1, 1, 1)
 
+  // Recorded mode starts at the URL's time; without one it plays the latest recording
+  // from its start. The fixture starts at its busiest moment.
+  function startClock(perfNow: number): void {
+    const saved = dataTime()
+    if (start != null || saved == null) return
+    const t =
+      ctx.mode === "recorded" && ctx.time != null
+        ? Date.parse(ctx.time) / 1000
+        : ctx.mode === "fixture"
+          ? busiestMoment(runs.map((r) => r.run), saved)
+          : saved
+    start = { t, at: perfNow }
+  }
+
   function place(perfNow: number): void {
-    if (mesh == null) return
     const t = clock(perfNow)
     drawn = 0
-    for (const { route, run } of runs) {
+    // Until the clock starts there is nothing to place.
+    if (t != null) for (const { route, run } of runs) {
       if (drawn >= MAX_TRAINS) break
       const d = positionAt(run, t)
       if (d == null) continue
@@ -334,13 +361,18 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
     if (mesh.instanceColor != null) mesh.instanceColor.needsUpdate = true
   }
 
+  // Live mode asks again every REFRESH_MS, and recorded mode asks for the snapshot at
+  // the scene's clock, so it plays the recording. The fixture does not change, so it
+  // asks again only while a feed is missing.
   function refresh(perfNow: number): void {
-    if (refreshing || ctx.mode === "fixture" || perfNow - lastRefresh < REFRESH_MS) return
+    if (refreshing || perfNow - lastRefresh < REFRESH_MS) return
+    if (ctx.mode === "fixture" && failed.length === 0) return
     refreshing = true
     lastRefresh = perfNow
-    // Recorded mode asks for the snapshot at the scene's clock, so it plays the recording.
-    const t = ctx.mode === "recorded" ? new Date(clock(perfNow) * 1000).toISOString() : null
+    const at = clock(perfNow)
+    const t = ctx.mode === "recorded" ? (at == null ? ctx.time : new Date(at * 1000).toISOString()) : null
     load(t)
+      .then(() => startClock(performance.now()))
       .catch((error: unknown) => console.warn(`trains: ${(error as Error).message}`))
       .finally(() => (refreshing = false))
   }
@@ -358,32 +390,20 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       }
       for (const route of subway.routes) colors.set(route.id, trainColor(route.color))
       feeds = feedsFor(subway.routes.map((r) => r.id))
+      // A feed that fails is asked for again at the next refresh, and the HUD names it
+      // meanwhile, so a brief outage at startup does not leave the layer empty.
       await load(context.mode === "recorded" ? context.time : null)
-      if (feedData.size === 0) throw new Error(`no train feed loaded (${failed.join(", ")})`)
-
-      startedAt = performance.now()
-      lastRefresh = startedAt
-      const saved = dataTime() ?? 0
-      // Recorded mode without a time plays the latest recording from its start.
-      clockStart =
-        context.mode === "recorded" && context.time != null
-          ? Date.parse(context.time) / 1000
-          : context.mode === "fixture"
-            ? busiestMoment(runs.map((r) => r.run), saved)
-            : saved
-      mesh = new InstancedMesh(new BoxGeometry(BLOCK.width, BLOCK.height, BLOCK.length), new MeshBasicMaterial(), MAX_TRAINS)
-      mesh.name = "train-blocks"
-      // The blocks move every frame; their bounds would always be stale.
-      mesh.frustumCulled = false
-      group.add(mesh)
-      place(startedAt)
+      loaded = true
+      lastRefresh = performance.now()
+      startClock(lastRefresh)
+      place(lastRefresh)
     },
     update(nowMs) {
       refresh(nowMs)
       place(nowMs)
     },
     summary() {
-      if (mesh == null) return null
+      if (!loaded) return null
       return trainsSummary(drawn, dataTime(), now(), failed)
     },
   }

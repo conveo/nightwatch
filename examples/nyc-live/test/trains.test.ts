@@ -173,8 +173,9 @@ test("snapshot names carry their time, and recorded mode takes a feed from the l
   writeSnapshot(a, 1000, { l: "l@1000" })
   writeSnapshot(a, 2000, { l: "l@2000", g: "g@2000" })
   writeSnapshot(b, 3000, { l: "l@3000" })
-  // Recorded while the L feed was down.
+  // Recorded while the L feed was down, and one cut short (a recorder stopped mid-write).
   writeSnapshot(b, 2500, { g: "g@2500" })
+  writeFileSync(join(b, snapshotName(2600)), '{\n  "time": "1970-01-01T00:43:20Z",\n  "feeds": {\n    "l": "bEAy')
   const text = (buffer: Uint8Array | null) => (buffer == null ? null : Buffer.from(buffer).toString())
   assert.equal(text(findSnapshot([a, b], "l", 2999)), "l@2000")
   assert.equal(text(findSnapshot([a, b], "g", 2999)), "g@2500")
@@ -304,9 +305,17 @@ test("a train that left the station before its first known stop waits there, not
   assert.equal(run.before, 100)
   assert.equal(positionAt(run, 1290), 500 - 10 * (400 / 60))
   assert.equal(positionAt(run, 1000), 100)
-  // Still to call at a station off the line first: it has not reached the line yet.
+  // Still to leave a station off the line: it has not reached the line yet, however
+  // close its pace would put it. Once it leaves, it runs in evenly from the line's start.
   const away = toRun(trip("1_N..N20R", [stop("X1N", 1200), stop("T02N", 1300)]), line())!
   assert.equal(positionAt(away, 1000), null)
+  const near = toRun(trip("1_N..N20R", [stop("X1N", 1290), stop("T02N", 1300)]), line())!
+  assert.equal(positionAt(near, 1280), null)
+  assert.equal(positionAt(near, 1290), 0)
+  assert.equal(positionAt(near, 1295), 250)
+  // From further off at its own pace: 2,200 m before the line, so on it 4/5 of the way in.
+  assert.equal(positionAt(away, 1240), null)
+  assert.ok(Math.abs(positionAt(away, 1250)! - 50) < 1e-9)
   // Due at its first stop in ten minutes: a trip that has not started, not a train waiting at T01.
   assert.equal(positionAt(run, 1300 - 600), null)
 })
@@ -423,6 +432,28 @@ test("live mode asks for the feeds again every 30 s and is current when the feed
   layer.update!(performance.now() + REFRESH_MS + 1, 16)
   assert.equal(requests.length, 2 * n)
   assert.ok(requests.every((r) => r.t == null))
+})
+
+test("a feed that fails at startup is asked for again, and its trains then appear", async () => {
+  const subway = subwayFixture()
+  let down = true
+  const layer = createTrainsLayer({
+    loadSubway: async () => subway,
+    loadFeed: async (feed) => {
+      if (down) throw new Error("MTA unreachable")
+      return simplifyFeed(feed, "fixture", fixtureFeed(feed))
+    },
+  })
+  await layer.init({ mode: "fixture", time: null })
+  const mesh = layer.group.getObjectByName("train-blocks") as InstancedMesh
+  assert.equal(layer.summary!(), "0 trains · no train data for 1234567, bdfm, nqrw")
+  assert.equal(mesh.count, 0)
+  down = false
+  layer.update!(performance.now() + REFRESH_MS + 1, 16)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  layer.update!(performance.now() + REFRESH_MS + 2, 16)
+  assert.ok(mesh.count >= 1, `${mesh.count} trains`)
+  assert.match(layer.summary!()!, /^\d+ trains? · MTA data from .*: positions may not be real time$/)
 })
 
 // test/fixtures/trains.png is a real screenshot of recorded mode, and test/recordings/

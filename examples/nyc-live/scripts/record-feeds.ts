@@ -12,7 +12,7 @@
 // are published under the MTA's terms (see README.md); recordings stay in data/, which
 // is not committed. The fixture is one small snapshot, replaced by the next --fixture.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
@@ -61,7 +61,11 @@ function write(dir: string, label: string, buffers: Map<string, Uint8Array>, new
   }
   const text = formatSnapshot(snapshot)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, snapshotName(newest)), text)
+  // Written aside and renamed into place, so playback during a recording never reads
+  // half a file (the server only reads names that end in .json).
+  const path = join(dir, snapshotName(newest))
+  writeFileSync(`${path}.partial`, text)
+  renameSync(`${path}.partial`, path)
   console.log(`${label}/${snapshotName(newest)}: ${buffers.size} feeds, ${(Buffer.byteLength(text) / 1024).toFixed(0)} KB`)
 }
 
