@@ -95,6 +95,9 @@ function flatMesh(shapes: Shape[], color: number): Mesh {
       color,
       transparent: true,
       opacity: GROUND_OPACITY,
+      // Nor does it hide what is drawn after it: the subway's see-through copy
+      // (src/layers/subway.ts) shows through it.
+      depthWrite: false,
       // Pushes the ground back in depth, so streets, the venue ring and anything else
       // drawn on it win over it at any distance.
       polygonOffset: true,

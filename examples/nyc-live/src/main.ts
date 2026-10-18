@@ -154,8 +154,14 @@ renderer.setAnimationLoop((now) => {
 const results = await Promise.allSettled(layers.map((layer) => layer.init({ mode: view.mode, time: view.t })))
 const errors = results.flatMap((r, i) => (r.status === "rejected" ? [`${layers[i]!.id}: ${String(r.reason)}`] : []))
 // Live layers refresh their data, so the status line is read again every few seconds.
+// The streets and the venue pin speak for themselves on screen, so the line keeps to
+// what loads and changes, short enough to read from the back of a room.
+const QUIET_LAYERS = new Set(["ground", "venue"])
 function renderStatus(): void {
-  const summaries = layers.map((l) => l.summary?.()).filter((s): s is string => s != null && s !== "")
+  const summaries = layers
+    .filter((l) => !QUIET_LAYERS.has(l.id))
+    .map((l) => l.summary?.())
+    .filter((s): s is string => s != null && s !== "")
   status.textContent = [...summaries, ...errors.map((e) => `failed: ${e}`)].join(" · ") || "ready"
 }
 renderStatus()

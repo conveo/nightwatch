@@ -11,7 +11,7 @@ import {
   Vector3,
 } from "three"
 import { SUBWAY_DEPTH_M, TRAINS_XRAY_OPACITY } from "../constants.ts"
-import { loadSubwayData, pointAlong, stationId, toPath, type Path, type SubwayData, type SubwayShape } from "./subway.ts"
+import { loadSubwayData, pointAlong, seeThrough, stationId, toPath, type Path, type SubwayData, type SubwayShape } from "./subway.ts"
 import type { Layer, LayerContext } from "./types.ts"
 
 // Live train positions from the MTA's realtime feeds, moving along the subway lines.
@@ -277,20 +277,17 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
   // The blocks move every frame; their bounds would always be stale.
   mesh.frustumCulled = false
   group.add(mesh)
-  // The same blocks again, see-through and on top of everything, so a train under the
-  // buildings still shows. They share the blocks' positions and colours.
+  // The same blocks again, see-through and over the buildings and the ground, so a
+  // train under them still shows; after the subway's own see-through tubes (0.5) and
+  // before the streets (1). They share the blocks' positions and colours.
   mesh.setColorAt(0, WHITE)
-  const xray = new InstancedMesh(
-    mesh.geometry,
-    new MeshBasicMaterial({ transparent: true, opacity: TRAINS_XRAY_OPACITY, depthTest: false, depthWrite: false }),
-    MAX_TRAINS,
-  )
+  const xray = seeThrough(new InstancedMesh(mesh.geometry, new MeshBasicMaterial({ depthTest: false }), MAX_TRAINS), TRAINS_XRAY_OPACITY)
   xray.name = "train-blocks-xray"
   xray.instanceMatrix = mesh.instanceMatrix
   xray.instanceColor = mesh.instanceColor
   xray.count = 0
   xray.frustumCulled = false
-  xray.renderOrder = 3
+  xray.renderOrder = 0.75
   mesh.add(xray)
   let loaded = false
   let drawn = 0

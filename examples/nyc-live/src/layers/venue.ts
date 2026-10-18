@@ -18,6 +18,11 @@ export function createVenueLayer(): Layer {
       )
       ring.rotation.x = -Math.PI / 2
       ring.position.y = 0.5
+      // Drawn after the see-through subway and trains, so they never cover the marker.
+      for (const mesh of [pin, ring]) {
+        mesh.material.transparent = true
+        mesh.renderOrder = 2
+      }
       group.add(pin, ring)
     },
     summary: () => "598 Broadway",

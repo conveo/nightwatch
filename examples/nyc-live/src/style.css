@@ -2,8 +2,8 @@
   color-scheme: dark;
   --bg: #0b1020;
   --fg: #e8ecf4;
-  --muted: #9aa4b8;
-  --panel: rgba(11, 16, 32, 0.78);
+  --muted: #aeb7c9;
+  --panel: rgba(11, 16, 32, 0.9);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -33,7 +33,7 @@ body {
   left: 16px;
   padding: 12px 16px;
   /* Clear of the ask panel at the top right: the status line wraps instead. */
-  max-width: min(760px, calc(100vw - 484px));
+  max-width: min(1040px, calc(100vw - 484px));
   border-radius: 10px;
   background: var(--panel);
   pointer-events: none;
@@ -54,7 +54,9 @@ body {
 #hud p {
   margin: 4px 0 0;
   font-size: 24px;
-  color: var(--muted);
+  line-height: 1.25;
+  /* Lighter than --muted: it carries the MTA notice, which must read from the back. */
+  color: #c3cbdb;
 }
 
 #ask {
