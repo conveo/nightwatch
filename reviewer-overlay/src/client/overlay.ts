@@ -15,7 +15,18 @@ import {
   MAX_STROKES,
   MAX_TOTAL_POINTS,
 } from "../limits.ts"
-import { annotateFrame, PIN_COLOR, PIN_RADIUS, pinPath, strokePath } from "./annotate.ts"
+import {
+  annotateFrame,
+  PIN_COLOR,
+  PIN_LABEL_FAMILY,
+  PIN_LABEL_PX,
+  PIN_RADIUS,
+  pinPath,
+  STROKE_HALO,
+  STROKE_HALO_WIDTH,
+  STROKE_WIDTH,
+  strokePath,
+} from "./annotate.ts"
 import {
   type CaptureMode,
   DisplayMediaCapture,
@@ -26,6 +37,8 @@ import {
   settle,
 } from "./capture.ts"
 import { h, svg } from "./dom.ts"
+import { icon } from "./icons.ts"
+import { meshMark } from "./mark.ts"
 import { renderMarkdown, safeHref } from "./markdown.ts"
 import { KEY_PREFIX, readJson, writeJson } from "./storage.ts"
 import { STYLES } from "./styles.ts"
@@ -46,6 +59,8 @@ const UI_KEY = `${KEY_PREFIX}ui`
 const TARGET_KEY = `${KEY_PREFIX}target`
 const PIN_SEQ_KEY = `${KEY_PREFIX}pin-seq`
 const MIN_STROKE_STEP_PX = 3
+// The composer keeps this far from its anchor and from the viewport edges.
+const COMPOSER_GAP_PX = 12
 
 const isUiState = (value: unknown): value is UiState =>
   typeof value === "object" &&
@@ -186,7 +201,7 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
   const bubble = h(
     "button",
     { className: "bubble", attrs: { type: "button", "aria-label": "Open reviewer" }, on: { click: () => setOpen(true) } },
-    [h("span", { className: "bubble-dot" }, []), "Reviewer"],
+    [meshMark({ suffix: "bubble", className: "bubble-mark" }), h("span", { className: "sr-only" }, ["Reviewer"])],
   )
 
   const targetInput = h(
@@ -216,6 +231,7 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
   const panelStatus = h("div", { className: "status", attrs: { role: "status" } }, [])
   const panel = h("section", { className: "panel", attrs: { "aria-label": "Reviewer" } }, [
     h("div", { className: "panel-head" }, [
+      h("span", { className: "panel-mark" }, [meshMark({ suffix: "panel", className: "mark" })]),
       h("div", { className: "panel-title" }, ["Reviewer"]),
       h(
         "button",
@@ -224,7 +240,7 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
           attrs: { type: "button", title: "Reload test plan", "aria-label": "Reload test plan" },
           on: { click: () => void loadConfig() },
         },
-        ["⟳"],
+        [icon("reload")],
       ),
       h(
         "button",
@@ -233,17 +249,17 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
           attrs: { type: "button", title: "Close", "aria-label": "Close reviewer" },
           on: { click: () => setOpen(false) },
         },
-        ["×"],
+        [icon("close")],
       ),
     ]),
-    targetRow,
+    h("div", { className: "panel-tabs" }, [h("div", { className: "panel-tab" }, [icon("plan"), "Test plan"])]),
     panelBody,
-    h("div", { className: "panel-foot" }, [commentButton, panelStatus]),
+    h("div", { className: "panel-foot" }, [targetRow, commentButton, panelStatus]),
   ])
 
   const layer = h("div", { className: "layer" }, [])
   const marks = svg("svg", { class: "marks", "aria-hidden": "true" })
-  const toolButton = (tool: "pin" | "draw", label: string) =>
+  const toolButton = (tool: "pin" | "draw", label: string, glyph: "pin" | "pen") =>
     h(
       "button",
       {
@@ -256,16 +272,18 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
           },
         },
       },
-      [label],
+      [icon(glyph), label],
     )
-  const pinToolButton = toolButton("pin", "Pin")
-  const drawToolButton = toolButton("draw", "Draw")
+  const pinToolButton = toolButton("pin", "Pin", "pin")
+  const drawToolButton = toolButton("draw", "Draw", "pen")
   const hint = h("span", { className: "hint" }, [])
   const toolbarStatus = h("div", { className: "status", attrs: { role: "status" } }, [])
   const toolbar = h("div", { className: "toolbar", attrs: { role: "toolbar", "aria-label": "Comment tools" } }, [
-    hint,
     pinToolButton,
     drawToolButton,
+    hint,
+    h("span", { className: "keys" }, [h("kbd", null, ["Esc"]), "to exit"]),
+    h("span", { className: "sep", attrs: { "aria-hidden": "true" } }, []),
     h(
       "button",
       {
@@ -284,7 +302,8 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
     toolbarStatus,
   ])
 
-  const composerTitle = h("div", { className: "small muted" }, [])
+  const composerBadge = h("span", { className: "composer-badge", attrs: { "aria-hidden": "true" } }, [])
+  const composerTitle = h("span", { className: "composer-title" }, [])
   const textarea = h(
     "textarea",
     {
@@ -308,7 +327,7 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
   )
   const composerStatus = h("div", { className: "status", attrs: { role: "status" } }, [])
   const composer = h("div", { className: "composer", attrs: { role: "dialog", "aria-label": "Comment" } }, [
-    composerTitle,
+    h("div", { className: "composer-head" }, [composerBadge, composerTitle]),
     textarea,
     composerStatus,
     h("div", { className: "composer-actions" }, [
@@ -644,19 +663,19 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
       }
       const d = points.length === 1 ? `M ${first.x} ${first.y} l 0.01 0` : strokePath(points)
       const common = { d, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }
-      children.push(svg("path", { ...common, stroke: "rgba(255,255,255,0.85)", "stroke-width": "6" }))
-      children.push(svg("path", { ...common, stroke: PIN_COLOR, "stroke-width": "3" }))
+      children.push(svg("path", { ...common, stroke: STROKE_HALO, "stroke-width": String(STROKE_HALO_WIDTH) }))
+      children.push(svg("path", { ...common, stroke: PIN_COLOR, "stroke-width": String(STROKE_WIDTH) }))
     }
     if (state.pin != null) {
       const { d, cx, cy } = pinPath({ x: state.pin.pageX - sx, y: state.pin.pageY - sy, r: PIN_RADIUS })
-      children.push(svg("path", { d, fill: PIN_COLOR, stroke: "#ffffff", "stroke-width": "2" }))
+      children.push(svg("path", { d, class: "pin", fill: PIN_COLOR, stroke: "#ffffff", "stroke-width": "2" }))
       const label = svg("text", {
         x: String(cx),
         y: String(cy + 0.5),
         fill: "#ffffff",
-        "font-size": "13",
+        "font-size": String(PIN_LABEL_PX),
         "font-weight": "700",
-        "font-family": "system-ui, -apple-system, sans-serif",
+        "font-family": PIN_LABEL_FAMILY,
         "text-anchor": "middle",
         "dominant-baseline": "middle",
       })
@@ -683,10 +702,15 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
     if (anchor == null) {
       return
     }
-    const width = composer.offsetWidth || 300
+    const width = composer.offsetWidth || 320
     const height = composer.offsetHeight || 180
-    const left = clamp({ value: anchor.x + 18, min: 12, max: window.innerWidth - width - 12 })
-    const top = clamp({ value: anchor.y + 12, min: 12, max: window.innerHeight - height - 12 })
+    // The open panel docks on the right, so the composer fits in the space left
+    // of it, and flips to the anchor's left side when the right side is short.
+    const panelLeft = state.open ? panel.getBoundingClientRect().left : window.innerWidth
+    const right = panelLeft - width - COMPOSER_GAP_PX >= COMPOSER_GAP_PX ? panelLeft : window.innerWidth
+    const beside = anchor.x + 18 + width + COMPOSER_GAP_PX <= right ? anchor.x + 18 : anchor.x - 18 - width
+    const left = clamp({ value: beside, min: COMPOSER_GAP_PX, max: right - width - COMPOSER_GAP_PX })
+    const top = clamp({ value: anchor.y + COMPOSER_GAP_PX, min: COMPOSER_GAP_PX, max: window.innerHeight - height - COMPOSER_GAP_PX })
     composer.style.left = `${left}px`
     composer.style.top = `${top}px`
   }
@@ -818,12 +842,8 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
     const index = clamp({ value: state.featureIndex, min: 0, max: features.length - 1 })
     const feature = features[index]
     const nodes: HTMLElement[] = []
-    if (plan.title != null) {
-      nodes.push(h("div", { className: "plan-title" }, [plan.title]))
-    }
-    if (plan.subtitle != null) {
-      nodes.push(h("div", { className: "muted small" }, [renderMarkdown(plan.subtitle)]))
-    }
+    const title = plan.title != null ? h("div", { className: "plan-title" }, [plan.title]) : null
+    let nav: HTMLElement | null = null
     if (features.length > 1) {
       const go = (next: number) => () => {
         state.featureIndex = next
@@ -842,13 +862,17 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
       )
       previous.disabled = index === 0
       next.disabled = index === features.length - 1
-      nodes.push(
-        h("div", { className: "feature-nav" }, [
-          previous,
-          h("span", { className: "small muted" }, [`Feature ${index + 1} of ${features.length}`]),
-          next,
-        ]),
-      )
+      nav = h("div", { className: "feature-nav" }, [
+        previous,
+        h("span", { className: "small muted" }, [`Feature ${index + 1} of ${features.length}`]),
+        next,
+      ])
+    }
+    if (title != null || nav != null) {
+      nodes.push(h("div", { className: "plan-head" }, [title ?? h("div", null, []), nav]))
+    }
+    if (plan.subtitle != null) {
+      nodes.push(h("div", { className: "muted small" }, [renderMarkdown(plan.subtitle)]))
     }
     if (feature != null) {
       nodes.push(renderFeature({ plan, feature, index }))
@@ -864,7 +888,7 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
       h("div", { className: "small muted" }, ["Sent this session"]),
       ...state.sent.slice(0, 10).map((entry) =>
         h("div", { className: "sent-item" }, [
-          h("span", { className: "muted" }, [entry.n == null ? "–" : `#${entry.n}`]),
+          h("span", { className: "muted sent-tag" }, [entry.n == null ? "–" : `#${entry.n}`]),
           h("span", { className: "text" }, [entry.text === "" ? "(no text)" : entry.text]),
           h("span", { className: entry.ok ? "status success" : "status error" }, [entry.ok ? "delivered" : "failed"]),
         ]),
@@ -897,6 +921,8 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
     hint.textContent =
       state.captureNote ?? (state.tool === "pin" ? "Click the page to drop a pin" : "Drag on the page to draw")
     composerTitle.textContent = state.pin != null ? `Pin #${state.pin.n}` : "Drawing"
+    composerBadge.className = state.pin != null ? "composer-badge" : "composer-badge pen"
+    composerBadge.replaceChildren(state.pin != null ? String(state.pin.n) : icon("pen"))
     sendButton.disabled = state.sending
     sendButton.textContent = state.sending ? "Sending…" : "Send"
 

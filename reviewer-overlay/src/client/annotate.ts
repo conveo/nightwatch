@@ -1,16 +1,23 @@
 // Pin and stroke geometry shared by the live SVG and the screenshot canvas, so
 // the image the agent gets shows the marker exactly where the reviewer saw it.
 
-export const PIN_COLOR = "#ea580c"
-export const PIN_RADIUS = 14
+export const PIN_COLOR = "#e7000b"
+export const PIN_RADIUS = 13
+// The halo under a stroke keeps it readable on dark pages; on light pages it
+// disappears and the line reads as a plain red pen.
+export const STROKE_WIDTH = 2.5
+export const STROKE_HALO = "rgba(255,255,255,0.8)"
+export const STROKE_HALO_WIDTH = 5
+export const PIN_LABEL_PX = 11
+export const PIN_LABEL_FAMILY = `Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`
 
 type Point = { x: number; y: number }
 
-// A teardrop whose tip sits on (x, y): a circle above the point joined to the
+// A map marker whose tip sits on (x, y): a circle above the point joined to the
 // tip by its two tangent lines.
 export function pinPath(args: { x: number; y: number; r: number }): { d: string; cx: number; cy: number } {
   const { x, y, r } = args
-  const distance = r * 1.9
+  const distance = r * 1.4
   const cy = y - distance
   const alpha = Math.acos(r / distance)
   const dx = r * Math.sin(alpha)
@@ -50,11 +57,11 @@ export function annotateFrame(args: {
       continue
     }
     const path = new Path2D(stroke.length === 1 ? `M ${stroke[0]?.x} ${stroke[0]?.y} l 0.01 0` : strokePath(stroke))
-    ctx.strokeStyle = "rgba(255,255,255,0.85)"
-    ctx.lineWidth = 6
+    ctx.strokeStyle = STROKE_HALO
+    ctx.lineWidth = STROKE_HALO_WIDTH
     ctx.stroke(path)
     ctx.strokeStyle = PIN_COLOR
-    ctx.lineWidth = 3
+    ctx.lineWidth = STROKE_WIDTH
     ctx.stroke(path)
   }
   ctx.restore()
@@ -66,9 +73,10 @@ export function annotateFrame(args: {
     const { d, cx, cy } = pinPath({ x, y, r })
     const path = new Path2D(d)
     ctx.save()
-    ctx.shadowColor = "rgba(0,0,0,0.35)"
-    ctx.shadowBlur = 8 * scale
-    ctx.shadowOffsetY = 2 * scale
+    ctx.shadowColor = "rgba(0,0,0,0.3)"
+    ctx.shadowBlur = 6 * scale
+    ctx.shadowOffsetX = 2 * scale
+    ctx.shadowOffsetY = 3 * scale
     ctx.fillStyle = PIN_COLOR
     ctx.fill(path)
     ctx.restore()
@@ -77,7 +85,7 @@ export function annotateFrame(args: {
     ctx.lineWidth = 2 * scale
     ctx.stroke(path)
     ctx.fillStyle = "#ffffff"
-    ctx.font = `700 ${Math.round(13 * scale)}px system-ui, -apple-system, "Segoe UI", sans-serif`
+    ctx.font = `700 ${Math.round(PIN_LABEL_PX * scale)}px ${PIN_LABEL_FAMILY}`
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     ctx.fillText(String(args.pin.n), cx, cy + 0.5 * scale)
