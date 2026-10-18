@@ -90,7 +90,9 @@ test("a bar is classic bikes with e-bikes stacked on top, and an empty dock is a
     assert.equal(none.height, 0)
   }
   const docks = [dock({ bikes: 1200, ebikes: 300 }), dock({ bikes: 5, ebikes: 1 }), dock({ bikes: 9, ebikes: 4, renting: false })]
-  assert.equal(summarize(docks), "3 Citi Bike docks · 1,205 bikes (301 e-bikes)")
+  // 22:23 UTC is 18:23 in New York in October (EDT).
+  assert.equal(summarize({ updated: "2026-10-18T22:23:19.000Z", docks }), "3 Citi Bike docks · 1,205 bikes (301 e-bikes) at 18:23")
+  assert.equal(summarize({ updated: "", docks }), "3 Citi Bike docks · 1,205 bikes (301 e-bikes)")
 })
 
 function fakeFeeds() {

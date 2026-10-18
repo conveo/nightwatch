@@ -46,13 +46,19 @@ export function barSegments(dock: CitibikeDock): [classic: BarSegment, ebike: Ba
   ]
 }
 
-// For the HUD. Like the bars, it counts only bikes at docks that are renting.
-export function summarize(docks: CitibikeDock[]): string {
-  const renting = docks.filter((d) => d.renting)
+// For the HUD. Like the bars, it counts only bikes at docks that are renting. It
+// ends with the feed's time in New York, because main.ts reads it once after
+// startup: after a live refresh, the line still says which moment it describes.
+export function summarize(snapshot: CitibikeSnapshot): string {
+  const renting = snapshot.docks.filter((d) => d.renting)
   const bikes = renting.reduce((n, d) => n + d.bikes, 0)
   const ebikes = renting.reduce((n, d) => n + d.ebikes, 0)
   const fmt = (n: number) => n.toLocaleString("en-US")
-  return `${fmt(docks.length)} Citi Bike docks · ${fmt(bikes)} bikes (${fmt(ebikes)} e-bikes)`
+  const line = `${fmt(snapshot.docks.length)} Citi Bike docks · ${fmt(bikes)} bikes (${fmt(ebikes)} e-bikes)`
+  const updated = new Date(snapshot.updated)
+  if (Number.isNaN(updated.getTime())) return line
+  const at = updated.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+  return `${line} at ${at}`
 }
 
 async function load(mode: LayerContext["mode"]): Promise<CitibikeSnapshot> {
@@ -69,7 +75,7 @@ export function createCitibikeLayer(): Layer {
   const box = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
   const material = new MeshStandardMaterial({ roughness: 0.55, metalness: 0.05 })
   let mesh: InstancedMesh | null = null
-  let docks: CitibikeDock[] = []
+  let snapshot: CitibikeSnapshot = { updated: "", docks: [] }
   let selected: string | null = null
   let mode: LayerContext["mode"] = "fixture"
   let lastLoad = 0
@@ -81,7 +87,7 @@ export function createCitibikeLayer(): Layer {
   group.add(outline)
 
   function placeOutline(): void {
-    const dock = docks.find((d) => d.id === selected)
+    const dock = snapshot.docks.find((d) => d.id === selected)
     outline.visible = dock != null
     if (dock == null) return
     const [classic, ebike] = barSegments(dock)
@@ -91,7 +97,8 @@ export function createCitibikeLayer(): Layer {
   }
 
   function draw(next: CitibikeSnapshot): void {
-    docks = next.docks
+    snapshot = next
+    const { docks } = next
     if (mesh != null) {
       group.remove(mesh)
       mesh.dispose()
@@ -134,11 +141,11 @@ export function createCitibikeLayer(): Layer {
       // A failed refresh keeps the bars from the last good answer.
       refresh().catch((error: unknown) => console.warn("citibike refresh failed:", error))
     },
-    summary: () => (docks.length === 0 ? null : summarize(docks)),
+    summary: () => (snapshot.docks.length === 0 ? null : summarize(snapshot)),
     pick(ray: Raycaster) {
       if (mesh == null) return null
       const hit = ray.intersectObject(mesh, false)[0]
-      const dock = hit?.instanceId == null ? undefined : docks[Math.floor(hit.instanceId / 2)]
+      const dock = hit?.instanceId == null ? undefined : snapshot.docks[Math.floor(hit.instanceId / 2)]
       return dock == null ? null : `dock:${dock.id}`
     },
     select(id) {
