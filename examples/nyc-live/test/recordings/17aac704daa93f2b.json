@@ -1,0 +1,20 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "water_west_and_east",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "street_grid",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "no_square_grid",
+      "probability": 1
+    }
+  ]
+}
