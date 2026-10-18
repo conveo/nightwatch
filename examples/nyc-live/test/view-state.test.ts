@@ -27,11 +27,17 @@ test("the hash stays readable in a review note", () => {
 })
 
 test("malformed values fall back to the defaults", () => {
-  const view = parseViewState("#cam=1,2&tgt=a,b,c&mode=satellite&t=yesterday&layers=")
+  const view = parseViewState("#cam=1,2&tgt=a,b,c&mode=satellite&t=yesterday")
   assert.deepEqual(view.cam, DEFAULT_VIEW.cam)
   assert.deepEqual(view.tgt, DEFAULT_VIEW.tgt)
   assert.equal(view.mode, "fixture")
   assert.equal(view.t, null)
   assert.equal(view.layers, null)
   assert.equal(parseViewState("#light=dusk").light, "day")
+})
+
+test("an explicitly empty layer list survives a round trip", () => {
+  const none: ViewState = { ...DEFAULT_VIEW, layers: [] }
+  assert.deepEqual(parseViewState(serializeViewState(none)).layers, [])
+  assert.equal(parseViewState(serializeViewState(DEFAULT_VIEW)).layers, null)
 })

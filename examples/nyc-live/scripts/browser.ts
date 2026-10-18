@@ -9,9 +9,14 @@ import { mkdirSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { env, exit } from "node:process"
-import { launchChrome } from "./chrome.ts"
+import { devtoolsAnswering, launchChrome } from "./chrome.ts"
 
 const port = Number(env.NYC_LIVE_CDP_PORT ?? 9333)
+const running = await devtoolsAnswering(port)
+if (running != null) {
+  console.log(`a shared Chrome is already running\nexport NYC_LIVE_CDP=${running}`)
+  exit(0)
+}
 const profileDir = join(tmpdir(), "nyc-live-shared-chrome")
 mkdirSync(profileDir, { recursive: true })
 

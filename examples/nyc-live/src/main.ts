@@ -91,7 +91,13 @@ function setView(next: ViewState): void {
 
 applyView(view)
 for (const layer of layers) layer.select?.(view.sel)
-controls.addEventListener("end", captureCamera)
+// Damping keeps the camera moving after the pointer is released ("end"), so save the
+// view once the movement has settled, not when the drag ends.
+let settle: ReturnType<typeof setTimeout> | undefined
+controls.addEventListener("change", () => {
+  clearTimeout(settle)
+  settle = setTimeout(captureCamera, 300)
+})
 window.addEventListener("hashchange", () => applyView(parseViewState(location.hash)))
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight

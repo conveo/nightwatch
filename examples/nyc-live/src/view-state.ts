@@ -55,7 +55,8 @@ export function parseViewState(hash: string): ViewState {
     sel: params.get("sel") || null,
     mode: MODES.includes(mode as DataMode) ? (mode as DataMode) : DEFAULT_VIEW.mode,
     t: t != null && !Number.isNaN(Date.parse(t)) ? t : null,
-    layers: layers ? layers.split(",").filter((l) => l !== "") : null,
+    // No `layers` parameter shows every layer; `layers=` (empty) shows none.
+    layers: layers == null ? null : layers.split(",").filter((l) => l !== ""),
     light: params.get("light") === "night" ? "night" : "day",
   }
 }

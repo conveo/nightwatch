@@ -53,17 +53,39 @@ async function stopChrome(child: ChildProcess, profile: string | null): Promise<
   if (profile != null) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 
+// The DevTools URL of a Chrome on `port`, or null while it is not answering.
+export async function devtoolsAnswering(port: number): Promise<string | null> {
+  const url = `http://127.0.0.1:${port}`
+  try {
+    const res = await fetch(`${url}/json/version`, { signal: AbortSignal.timeout(1000) })
+    return res.ok ? url : null
+  } catch {
+    return null
+  }
+}
+
+// Chrome writes DevToolsActivePort only for --remote-debugging-port=0, so a fixed
+// port is found by asking it, and port 0 by reading the file.
+async function devtoolsUrl(profile: string, port: number): Promise<string | null> {
+  if (port !== 0) return devtoolsAnswering(port)
+  const file = join(profile, "DevToolsActivePort")
+  if (!existsSync(file)) return null
+  const found = readFileSync(file, "utf8").split("\n")[0]
+  return found != null && found !== "" ? `http://127.0.0.1:${found}` : null
+}
+
 // Some containers cannot use Chrome's sandbox. Launch with it first, and only when
 // Chrome exits during startup retry with --no-sandbox, saying so.
 export async function launchChrome(options: { port?: number; profileDir?: string } = {}): Promise<LaunchedChrome> {
   const binary = findChrome()
   if (binary == null) throw new Error("no Chrome found; set CHROME to a Chrome or Chromium binary")
+  const port = options.port ?? 0
   for (const noSandbox of [false, true]) {
     const profile = options.profileDir ?? mkdtempSync(join(tmpdir(), "nyc-live-chrome-"))
     rmSync(join(profile, "DevToolsActivePort"), { force: true })
     const args = [
       "--headless=new",
-      `--remote-debugging-port=${options.port ?? 0}`,
+      `--remote-debugging-port=${port}`,
       `--user-data-dir=${profile}`,
       "--no-first-run",
       "--no-default-browser-check",
@@ -77,14 +99,11 @@ export async function launchChrome(options: { port?: number; profileDir?: string
       exited = true
     })
     for (let i = 0; i < 100 && !exited; i++) {
-      const portFile = join(profile, "DevToolsActivePort")
-      if (existsSync(portFile)) {
-        const port = readFileSync(portFile, "utf8").split("\n")[0]
-        if (port != null && port !== "") {
-          if (noSandbox) console.error("chrome: started with --no-sandbox (the sandbox is not available here)")
-          const close = () => stopChrome(child, options.profileDir == null ? profile : null)
-          return { cdpUrl: `http://127.0.0.1:${port}`, process: child, close }
-        }
+      const cdpUrl = await devtoolsUrl(profile, port)
+      if (cdpUrl != null && !exited) {
+        if (noSandbox) console.error("chrome: started with --no-sandbox (the sandbox is not available here)")
+        const close = () => stopChrome(child, options.profileDir == null ? profile : null)
+        return { cdpUrl, process: child, close }
       }
       await sleep(150)
     }
@@ -96,6 +115,8 @@ export async function launchChrome(options: { port?: number; profileDir?: string
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
 
 // Just enough of the DevTools protocol: one browser connection, flattened sessions.
+// Every request has a time limit, and closing the connection fails every request
+// still waiting, so a Chrome that dies or hangs cannot leave a command waiting forever.
 class Cdp {
   private nextId = 1
   private readonly pending = new Map<number, Pending>()
@@ -112,6 +133,12 @@ class Cdp {
       if (message.error != null) waiter.reject(new Error(message.error.message))
       else waiter.resolve(message.result)
     })
+    socket.addEventListener("close", () => this.failAll(new Error("the DevTools connection closed")))
+  }
+
+  private failAll(error: Error): void {
+    for (const waiter of this.pending.values()) waiter.reject(error)
+    this.pending.clear()
   }
 
   static async connect(cdpUrl: string): Promise<Cdp> {
@@ -124,10 +151,28 @@ class Cdp {
     return new Cdp(socket)
   }
 
-  send<T>(method: string, params: object = {}, sessionId?: string): Promise<T> {
+  send<T>(method: string, params: object = {}, sessionId?: string, timeoutMs = 15_000): Promise<T> {
+    if (this.socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error(`${method}: the DevTools connection is closed`))
+    }
     const id = this.nextId++
-    this.socket.send(JSON.stringify({ id, method, params, ...(sessionId != null ? { sessionId } : {}) }))
-    return new Promise<T>((resolve, reject) => this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject }))
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`${method} got no answer within ${timeoutMs} ms`))
+      }, timeoutMs)
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer)
+          resolve(value as T)
+        },
+        reject: (error) => {
+          clearTimeout(timer)
+          reject(error)
+        },
+      })
+      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId != null ? { sessionId } : {}) }))
+    })
   }
 
   close(): void {
@@ -172,7 +217,7 @@ export async function screenshot(
     const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" }, sessionId)
     return { png: Buffer.from(data, "base64"), app }
   } finally {
-    await cdp.send("Target.closeTarget", { targetId }).catch(() => {})
+    await cdp.send("Target.closeTarget", { targetId }, undefined, 5_000).catch(() => {})
     cdp.close()
   }
 }
