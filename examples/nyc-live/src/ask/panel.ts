@@ -99,12 +99,17 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
     }
   }
 
-  function bullet(highlight: string | null): Node | null {
-    const id = highlight?.startsWith("line:") ? highlight.slice(5) : null
-    if (id == null) return null
-    const b = el("span", { className: "ask-bullet", textContent: id })
-    b.style.background = colors.get(id) ?? "#808183"
-    return b
+  // One coloured bullet per line in a "line:R/W" highlight.
+  function bullets(highlight: string | null): Node[] {
+    if (highlight == null || !highlight.startsWith("line:")) return []
+    return highlight
+      .slice(5)
+      .split("/")
+      .map((id) => {
+        const b = el("span", { className: "ask-bullet", textContent: id })
+        b.style.background = colors.get(id) ?? "#808183"
+        return b
+      })
   }
 
   function showAnswer(r: AskResponse): void {
@@ -115,9 +120,8 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
       bar.replaceChildren()
       others.replaceChildren()
     } else {
-      const lead = bullet(r.highlight)
       answer.replaceChildren(
-        ...(lead == null ? [] : [lead]),
+        ...bullets(r.highlight),
         el("span", { className: "ask-answer-text", textContent: r.answer }),
         el("span", { className: "ask-pct", textContent: percent(r.probability) }),
       )
@@ -208,5 +212,9 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
     await ask(q)
   }
 
-  return Promise.race([start(), new Promise<void>((resolve) => setTimeout(resolve, SETTLE_LIMIT_MS))])
+  let limit: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<void>((resolve) => {
+    limit = setTimeout(resolve, SETTLE_LIMIT_MS)
+  })
+  return Promise.race([start(), timeout]).finally(() => clearTimeout(limit))
 }

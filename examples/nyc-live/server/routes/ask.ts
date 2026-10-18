@@ -9,7 +9,16 @@
 //   yesno  a free yes/no question about the state       (predicate)
 
 import { readJson, sendJson, type Route } from "../api.ts"
-import { cityStateProvider, nearby, distanceM, type CityState, type CityStateProvider, type Place } from "../city-state.ts"
+import {
+  cityStateProvider,
+  distanceM,
+  nearby,
+  type CityState,
+  type CityStateProvider,
+  type LineService,
+  type Place,
+  type Station,
+} from "../city-state.ts"
 import { DECISIONS_MODEL, decide, recordingKey, type Answer, type DecisionRequest, type Recording } from "../decisions.ts"
 import { toLocal, VENUE } from "../../src/geo.ts"
 import { YESNO_MAX_LENGTH, type AskOptions, type AskQuestion, type AskResponse } from "../../src/ask/types.ts"
@@ -132,20 +141,30 @@ function routePlan(state: CityState, place: Place): Plan {
   const toDocks = nearby(state.docks, place, DOCK_RADIUS_M)
 
   // A line is an option when it stops both near the venue and near the place (one
-  // seat, no changes). The nearest such station on each side is the one described.
-  const choices: Array<{ value: string; description: string }> = []
-  const highlights: Record<string, string> = {}
+  // seat, no changes), from the nearest such station on each side. Lines that run
+  // between the same two stations with the same status are one option ("R/W"), so
+  // trains sharing a track do not split the answer's probability between them.
+  const groups = new Map<string, { from: Station & { distanceM: number }; to: Station & { distanceM: number }; lines: LineService[] }>()
   for (const line of state.lines) {
     const from = fromStations.find((s) => s.lines.includes(line.id))
     const to = toStations.find((s) => s.lines.includes(line.id))
     if (from == null || to == null) continue
-    const every = line.headwayMin == null ? "no trains running" : `a train every ${line.headwayMin} min`
-    const value = `${line.id} train`
+    const key = `${from.id} ${to.id} ${line.status}`
+    const group = groups.get(key)
+    if (group == null) groups.set(key, { from, to, lines: [line] })
+    else group.lines.push(line)
+  }
+  const choices: Array<{ value: string; description: string }> = []
+  const highlights: Record<string, string> = {}
+  for (const { from, to, lines } of groups.values()) {
+    const ids = lines.map((l) => l.id).join("/")
+    const every = lines.map((l) => (l.headwayMin == null ? `no ${l.id} trains` : `${l.id} every ${l.headwayMin} min`)).join(", ")
+    const value = `${ids} train`
     choices.push({
       value,
-      description: `From ${from.name} (${metres(from.distanceM)} from the venue) to ${to.name} (${metres(to.distanceM)} from ${place.name}); ${line.status}, ${every}.`,
+      description: `From ${from.name} (${metres(from.distanceM)} from the venue) to ${to.name} (${metres(to.distanceM)} from ${place.name}); ${lines[0]!.status}: ${every}.`,
     })
-    highlights[value] = `line:${line.id}`
+    highlights[value] = `line:${ids}`
   }
   const bikes = fromDocks.reduce((n, d) => n + d.bikes + d.ebikes, 0)
   const free = toDocks.reduce((n, d) => n + d.freeDocks, 0)
@@ -193,7 +212,7 @@ export function planQuestion(question: AskQuestion, state: CityState): Plan {
     case "line":
       return {
         question: `Is the ${question.line} train running normally?`,
-        highlights: { Yes: `line:${question.line}` },
+        highlights: { Yes: `line:${question.line}`, No: `line:${question.line}` },
         request: {
           model: DECISIONS_MODEL,
           input: describeState(state),
@@ -240,7 +259,8 @@ export function readAnswer(plan: Plan, answer: Answer | undefined): Pick<AskResp
     return { answer: null, probability: null, options: [], highlight: null }
   }
   options.sort((a, b) => b.probability - a.probability)
-  const best = options[0]!
+  const best = options[0]
+  if (best == null) return { answer: null, probability: null, options: [], highlight: null }
   return { answer: best.value, probability: best.probability, options, highlight: plan.highlights[best.value] ?? null }
 }
 
@@ -268,7 +288,8 @@ export function createAskRoutes(options: AskRouteOptions = {}): Route[] {
     const answer = decide(request, { apiKey: options.apiKey, recording: options.recording }).then((r) => r.answers[0])
     cache.set(key, { at: Date.now(), answer })
     if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!)
-    answer.catch(() => cache.delete(key))
+    // A failed answer is forgotten, unless a newer one has taken its place.
+    answer.catch(() => cache.get(key)?.answer === answer && cache.delete(key))
     return { answer: await answer, cached: false }
   }
 
@@ -296,6 +317,9 @@ export function createAskRoutes(options: AskRouteOptions = {}): Route[] {
         body = await readJson<Record<string, unknown>>(req, 4096)
       } catch (error) {
         return sendJson(res, 400, { error: `not a JSON question: ${(error as Error).message}` })
+      }
+      if (typeof body !== "object" || body == null || Array.isArray(body)) {
+        return sendJson(res, 400, { error: "not a JSON question: send an object" })
       }
       const state = await provider(parseMode(body.mode)).get(parseTime(body.t))
       let question: AskQuestion

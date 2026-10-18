@@ -23,7 +23,8 @@ export type AskResponse = {
   probability: number | null
   // Every option with its probability, most likely first.
   options: Array<{ value: string; probability: number }>
-  // What the scene could highlight for this answer: "line:6", "citibike", "walk".
+  // What the scene could highlight for this answer: "line:6", "line:R/W",
+  // "citibike" or "walk".
   highlight: string | null
   state: { source: DataMode; time: string }
   ms: number

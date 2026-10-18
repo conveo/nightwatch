@@ -1,0 +1,33 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "choice",
+      "name": "route",
+      "choice": "6 train",
+      "probabilities": [
+        {
+          "value": "R/W train",
+          "probability": 0.06
+        },
+        {
+          "value": "6 train",
+          "probability": 0.89
+        },
+        {
+          "value": "E train",
+          "probability": 0.01
+        },
+        {
+          "value": "Citi Bike",
+          "probability": 0.02
+        },
+        {
+          "value": "Walk",
+          "probability": 0.02
+        }
+      ],
+      "confidence": 0.86
+    }
+  ]
+}
