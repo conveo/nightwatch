@@ -132,7 +132,7 @@ mountControls(document.querySelector<HTMLElement>("#controls")!, {
   getView: () => view,
   setView,
 })
-mountAskPanel(document.querySelector<HTMLElement>("#ask")!, () => view)
+const askSettled = mountAskPanel(document.querySelector<HTMLElement>("#ask")!, () => view)
 
 let last = performance.now()
 renderer.setAnimationLoop((now) => {
@@ -149,6 +149,8 @@ const errors = results.flatMap((r, i) => (r.status === "rejected" ? [`${layers[i
 const summaries = layers.map((l) => l.summary?.()).filter((s): s is string => s != null && s !== "")
 status.textContent = [...summaries, ...errors.map((e) => `failed: ${e}`)].join(" · ") || "ready"
 for (const layer of layers) layer.select?.(view.sel)
+// A question in the URL is part of the view: report ready once its answer shows.
+await askSettled
 
 // Two frames after the last layer loads, everything is on screen.
 requestAnimationFrame(() =>
