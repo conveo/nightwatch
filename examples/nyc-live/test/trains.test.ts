@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { copyFileSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -14,9 +14,11 @@ import {
   feedUrl,
   findSnapshot,
   FIXTURES_DIR,
+  formatSnapshot,
   simplifyFeed,
   snapshotName,
   snapshotTime,
+  type Snapshot,
 } from "../server/routes/mta.ts"
 import { SUBWAY_DEPTH_M } from "../src/constants.ts"
 import { toLatLon } from "../src/geo.ts"
@@ -41,11 +43,19 @@ import {
 
 const { transit_realtime } = GtfsRealtimeBindings
 
-const fixtureFile = (feed: string) => {
-  const name = readdirSync(FIXTURES_DIR).find((n) => n.startsWith(`${feed}-`))
-  assert.ok(name != null, `no ${feed} snapshot in public/fixtures/trains/`)
-  return join(FIXTURES_DIR, name)
+// The committed snapshot: one file holding every feed.
+const fixtureName = () => {
+  const names = readdirSync(FIXTURES_DIR)
+  assert.equal(names.length, 1, `public/fixtures/trains/ holds ${names.join(", ")}`)
+  return names[0]!
 }
+const fixtureSnapshot = () => JSON.parse(readFileSync(join(FIXTURES_DIR, fixtureName()), "utf8")) as Snapshot
+const fixtureFeed = (feed: string) => {
+  const data = fixtureSnapshot().feeds[feed]
+  assert.ok(data != null, `no ${feed} feed in the committed snapshot`)
+  return Buffer.from(data, "base64")
+}
+const fixtureTime = () => snapshotTime(fixtureName())!
 const subwayFixture = () => JSON.parse(readFileSync("public/fixtures/subway.json", "utf8")) as SubwayData
 
 // [lat, lon] for a point `x` metres east and `z` metres south of the venue.
@@ -69,18 +79,19 @@ const line = (id = "N..N20R", route = "N"): SubwayShape => ({
 const stop = (id: string, arrive: number, depart = arrive) => ({ id, arrive, depart })
 const trip = (id: string, stops: FeedTrip["stops"], route = "N"): FeedTrip => ({ id, route, stops })
 
-test("every committed snapshot stays small and is named by its feed's own time", () => {
-  for (const name of readdirSync(FIXTURES_DIR)) {
-    const path = join(FIXTURES_DIR, name)
-    assert.ok(statSync(path).size < 300 * 1024, `${name} is over 300 KB`)
-    const feed = name.slice(0, name.indexOf("-"))
-    assert.ok(Object.hasOwn(FEEDS, feed), name)
-    assert.equal(simplifyFeed(feed, "fixture", readFileSync(path)).timestamp, snapshotTime(name), name)
-  }
+test("the committed snapshot is one small file of feeds, named by the newest feed's time", () => {
+  const name = fixtureName()
+  assert.ok(statSync(join(FIXTURES_DIR, name)).size < 300 * 1024, `${name} is over 300 KB`)
+  const snapshot = fixtureSnapshot()
+  assert.deepEqual(Object.keys(snapshot.feeds), ["1234567", "ace", "bdfm", "jz", "l", "nqrw"])
+  const times = Object.keys(snapshot.feeds).map((feed) => simplifyFeed(feed, "fixture", fixtureFeed(feed)).timestamp)
+  assert.equal(Math.max(...times), fixtureTime())
+  assert.equal(Date.parse(snapshot.time) / 1000, fixtureTime())
+  assert.equal(readFileSync(join(FIXTURES_DIR, name), "utf8"), formatSnapshot(snapshot))
 })
 
 test("a saved protobuf decodes into trips with their stops in order", () => {
-  const feed = simplifyFeed("nqrw", "fixture", readFileSync(fixtureFile("nqrw")))
+  const feed = simplifyFeed("nqrw", "fixture", fixtureFeed("nqrw"))
   assert.equal(feed.feed, "nqrw")
   assert.equal(feed.source, "fixture")
   assert.ok(feed.timestamp > Date.UTC(2026, 0, 1) / 1000)
@@ -132,39 +143,44 @@ test("the decoder keeps arrival-only and departure-only stops and drops cancelle
   })
 })
 
-test("a trimmed fixture keeps only the trips that stop at the given stations, as a feed", () => {
-  const raw = readFileSync(fixtureFile("nqrw"))
-  const trimmed = trimFeed(raw, new Set(["R22"]))
+test("a trimmed feed keeps the trips that stop at the given stations, with a stop either side", () => {
+  const raw = fixtureFeed("nqrw")
   const before = simplifyFeed("nqrw", "fixture", raw)
-  const after = simplifyFeed("nqrw", "fixture", trimmed)
+  const after = simplifyFeed("nqrw", "fixture", trimFeed(raw, new Set(["R22"])))
   assert.equal(after.timestamp, before.timestamp)
-  assert.ok(after.trips.length > 0 && after.trips.length < before.trips.length)
-  for (const t of after.trips) assert.ok(t.stops.some((s) => s.id.startsWith("R22")), t.id)
+  const prince = (t: FeedTrip) => t.stops.findIndex((s) => s.id.startsWith("R22"))
+  const kept = before.trips.filter((t) => prince(t) >= 0)
+  assert.ok(kept.length > 0 && kept.length < before.trips.length)
   assert.deepEqual(
-    after.trips.map((t) => t.id),
-    before.trips.filter((t) => t.stops.some((s) => s.id.startsWith("R22"))).map((t) => t.id),
+    after.trips,
+    kept.map((t) => ({ ...t, stops: t.stops.slice(Math.max(prince(t) - 1, 0), prince(t) + 2) })),
   )
 })
 
-test("snapshot names carry the feed time, and recorded mode picks the last one at or before t", () => {
-  assert.equal(snapshotName("nqrw", 1792364530), "nqrw-20261018T230210Z.pb")
-  assert.equal(snapshotTime("nqrw-20261018T230210Z.pb"), 1792364530)
-  assert.equal(snapshotTime("notes.txt"), null)
+// A snapshot file whose feeds hold the given text in place of a protobuf.
+function writeSnapshot(dir: string, time: number, feeds: Record<string, string>): void {
+  const encoded = Object.fromEntries(Object.entries(feeds).map(([f, text]) => [f, Buffer.from(text).toString("base64")]))
+  writeFileSync(join(dir, snapshotName(time)), formatSnapshot({ time: new Date(time * 1000).toISOString(), feeds: encoded }))
+}
+
+test("snapshot names carry their time, and recorded mode takes a feed from the last one at or before t", () => {
+  assert.equal(snapshotName(1792364530), "20261018T230210Z.json")
+  assert.equal(snapshotTime("20261018T230210Z.json"), 1792364530)
+  assert.equal(snapshotTime("notes.json"), null)
 
   const a = mkdtempSync(join(tmpdir(), "nyc-live-trains-a-"))
   const b = mkdtempSync(join(tmpdir(), "nyc-live-trains-b-"))
-  for (const [dir, time] of [
-    [a, 1000],
-    [a, 2000],
-    [b, 3000],
-  ] as const) {
-    writeFileSync(join(dir, snapshotName("l", time)), "")
-  }
-  writeFileSync(join(b, snapshotName("nqrw", 2500)), "")
-  assert.equal(findSnapshot([a, b], "l", 2999), join(a, snapshotName("l", 2000)))
-  assert.equal(findSnapshot([a, b], "l", 3000), join(b, snapshotName("l", 3000)))
-  assert.equal(findSnapshot([a, b], "l", 10), join(a, snapshotName("l", 1000)))
-  assert.equal(findSnapshot([a, b, join(a, "missing")], "g", 2000), null)
+  writeSnapshot(a, 1000, { l: "l@1000" })
+  writeSnapshot(a, 2000, { l: "l@2000", g: "g@2000" })
+  writeSnapshot(b, 3000, { l: "l@3000" })
+  // Recorded while the L feed was down.
+  writeSnapshot(b, 2500, { g: "g@2500" })
+  const text = (buffer: Uint8Array | null) => (buffer == null ? null : Buffer.from(buffer).toString())
+  assert.equal(text(findSnapshot([a, b], "l", 2999)), "l@2000")
+  assert.equal(text(findSnapshot([a, b], "g", 2999)), "g@2500")
+  assert.equal(text(findSnapshot([a, b], "l", 3000)), "l@3000")
+  assert.equal(text(findSnapshot([a, b], "l", 10)), "l@1000")
+  assert.equal(text(findSnapshot([a, b, join(a, "missing")], "si", 2000)), null)
 })
 
 // A stand-in for the ServerResponse sendJson writes to.
@@ -175,25 +191,28 @@ async function get(route: ReturnType<typeof createMtaRoute>, path: string) {
 }
 
 test("the route serves the fixture, a recording at t, and rejects unknown feeds and bad times", async () => {
+  const time = fixtureTime()
+  // A recording ten minutes after the committed snapshot, of an L feed with no trains.
   const recordings = mkdtempSync(join(tmpdir(), "nyc-live-recordings-"))
-  const fixture = fixtureFile("l")
-  const time = snapshotTime(fixture)!
-  copyFileSync(fixture, join(recordings, snapshotName("l", time + 600)))
+  const empty = transit_realtime.FeedMessage.encode({ header: { gtfsRealtimeVersion: "1.0", timestamp: time + 600 }, entity: [] }).finish()
+  const recording = { time: new Date((time + 600) * 1000).toISOString(), feeds: { l: Buffer.from(empty).toString("base64") } }
+  writeFileSync(join(recordings, snapshotName(time + 600)), formatSnapshot(recording))
   const route = createMtaRoute({ recordings, fetch: (() => Promise.reject(new Error("no network in tests"))) as typeof fetch })
 
   const fx = await get(route, "/api/mta/l?fixture")
   assert.equal(fx.status, 200)
   assert.equal(fx.body.source, "fixture")
-  assert.equal(fx.body.timestamp, time)
+  assert.equal(fx.body.timestamp, simplifyFeed("l", "fixture", fixtureFeed("l")).timestamp)
   assert.ok(fx.body.trips.length > 0)
 
   // Before the recording, the committed snapshot is the last one; after it, the recording.
   const iso = (s: number) => new Date(s * 1000).toISOString()
   const early = await get(route, `/api/mta/l?t=${iso(time + 300)}`)
   assert.equal(early.body.source, "recorded")
-  assert.equal(early.body.trips.length, fx.body.trips.length)
+  assert.deepEqual(early.body.trips, fx.body.trips)
   const late = await get(route, `/api/mta/l?t=${iso(time + 900)}`)
-  assert.equal(late.status, 200)
+  assert.equal(late.body.timestamp, time + 600)
+  assert.deepEqual(late.body.trips, [])
 
   assert.equal((await get(route, "/api/mta/x")).status, 404)
   assert.equal((await get(route, "/api/mta/l?t=yesterday")).status, 400)
@@ -203,7 +222,7 @@ test("the route serves the fixture, a recording at t, and rejects unknown feeds 
 })
 
 test("live feeds are fetched from the MTA at most every 15 s, and the last good one covers a failure", async () => {
-  const body = readFileSync(fixtureFile("l"))
+  const body = fixtureFeed("l")
   let clock = 1_000_000
   const urls: string[] = []
   let fail = false
@@ -351,7 +370,7 @@ async function layerFrom(subway: SubwayData, mode: "fixture" | "recorded" | "liv
     loadSubway: async () => subway,
     loadFeed: async (feed, _mode, t) => {
       requests.push({ feed, t })
-      return simplifyFeed(feed, mode === "live" ? "live" : "recorded", readFileSync(fixtureFile(feed)))
+      return simplifyFeed(feed, mode === "live" ? "live" : "recorded", fixtureFeed(feed))
     },
     now,
   })
@@ -362,7 +381,7 @@ async function layerFrom(subway: SubwayData, mode: "fixture" | "recorded" | "liv
 
 test("fixture and recorded mode draw trains on their lines and say they may not be real time", async () => {
   const subway = subwayFixture()
-  const saved = snapshotTime(fixtureFile("nqrw"))!
+  const saved = fixtureTime()
   const { layer, mesh, requests } = await layerFrom(subway, "fixture", null)
   assert.deepEqual(requests.map((r) => r.feed).sort(), ["1234567", "bdfm", "nqrw"])
   assert.ok(mesh.count >= 1, `${mesh.count} trains`)
@@ -395,7 +414,7 @@ test("the fixture's clock starts at its busiest moment", () => {
 
 test("live mode asks for the feeds again every 30 s and is current when the feed is", async () => {
   const subway = subwayFixture()
-  const saved = snapshotTime(fixtureFile("nqrw"))!
+  const saved = fixtureTime()
   const { layer, requests } = await layerFrom(subway, "live", null, () => saved * 1000 + 20_000)
   const n = requests.length
   assert.ok(!/real time/.test(layer.summary!()!), layer.summary!()!)

@@ -14,9 +14,10 @@ import { sendJson, type Route } from "../api.ts"
 //   /api/mta/nqrw?t=2026-10-18T22:53:00Z  recorded: the last snapshot at or before t
 //   /api/mta/nqrw?fixture                 the committed snapshot in public/fixtures/trains/
 //
-// Snapshots are the feed's own protobuf, saved by scripts/record-feeds.ts as
-// <feed>-<YYYYMMDDTHHMMSSZ>.pb: recordings in data/trains/ (not committed), small
-// samples in public/fixtures/trains/.
+// A snapshot is one JSON file per recorded moment, saved by scripts/record-feeds.ts as
+// <YYYYMMDDTHHMMSSZ>.json (the newest feed's time) and holding every feed's protobuf,
+// as the MTA sent it, in base64: recordings in data/trains/ (not committed), one small
+// sample in public/fixtures/trains/.
 
 const { transit_realtime } = GtfsRealtimeBindings
 
@@ -54,35 +55,49 @@ export function simplifyFeed(feed: string, source: TrainFeed["source"], buffer: 
   return { feed, source, timestamp: Number(message.header.timestamp ?? 0), trips }
 }
 
-// "nqrw", 1792364015 -> "nqrw-20261018T225335Z.pb"
-export function snapshotName(feed: string, timestamp: number): string {
+export type Snapshot = {
+  // ISO 8601, the newest feed's own time: nothing in the file is later.
+  time: string
+  // Feed id -> its protobuf, base64.
+  feeds: Record<string, string>
+}
+
+// 1792364530 -> "20261018T230210Z.json"
+export function snapshotName(timestamp: number): string {
   const iso = new Date(timestamp * 1000).toISOString().replace(/\.\d+Z$/, "Z")
-  return `${feed}-${iso.replaceAll("-", "").replaceAll(":", "")}.pb`
+  return `${iso.replaceAll("-", "").replaceAll(":", "")}.json`
 }
 
 export function snapshotTime(name: string): number | null {
-  const m = /-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.pb$/.exec(name)
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.json$/.exec(name)
   return m == null ? null : Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!) / 1000
 }
 
-// The snapshot of `feed` to show at time `t` (Unix seconds): the last one at or before
-// it, or the earliest when t is before every recording; null when there is none.
-export function findSnapshot(dirs: string[], feed: string, t: number): string | null {
-  let before: { path: string; time: number } | null = null
-  let after: { path: string; time: number } | null = null
-  for (const dir of dirs) {
-    if (!existsSync(dir)) continue
-    for (const name of readdirSync(dir)) {
-      if (!name.startsWith(`${feed}-`)) continue
-      const time = snapshotTime(name)
-      if (time == null) continue
-      const path = join(dir, name)
-      if (time <= t) {
-        if (before == null || time > before.time) before = { path, time }
-      } else if (after == null || time < after.time) after = { path, time }
-    }
+// One line per feed, so the committed sample diffs readably.
+export function formatSnapshot(snapshot: Snapshot): string {
+  const feeds = Object.entries(snapshot.feeds).map(([feed, data]) => `    ${JSON.stringify(feed)}: ${JSON.stringify(data)}`)
+  return `{\n  "time": ${JSON.stringify(snapshot.time)},\n  "feeds": {\n${feeds.join(",\n")}\n  }\n}\n`
+}
+
+// `feed`'s protobuf to show at time `t` (Unix seconds): from the last snapshot at or
+// before it that has the feed, or the earliest one after when t is before them all;
+// null when no snapshot has it.
+export function findSnapshot(dirs: string[], feed: string, t: number): Uint8Array | null {
+  const files = dirs.flatMap((dir) =>
+    existsSync(dir)
+      ? readdirSync(dir).flatMap((name) => {
+          const time = snapshotTime(name)
+          return time == null ? [] : [{ path: join(dir, name), time }]
+        })
+      : [],
+  )
+  const before = files.filter((f) => f.time <= t).sort((a, b) => b.time - a.time)
+  const after = files.filter((f) => f.time > t).sort((a, b) => a.time - b.time)
+  for (const { path } of [...before, ...after]) {
+    const data = (JSON.parse(readFileSync(path, "utf8")) as Snapshot).feeds[feed]
+    if (data != null) return Buffer.from(data, "base64")
   }
-  return (before ?? after)?.path ?? null
+  return null
 }
 
 export async function fetchFeed(feed: string, fetchImpl: typeof fetch = fetch): Promise<Uint8Array> {
@@ -139,9 +154,9 @@ export function createMtaRoute(options: MtaOptions = {}): Route {
       if (url.searchParams.has("fixture") || t != null) {
         const at = t == null ? Infinity : Date.parse(t) / 1000
         if (Number.isNaN(at)) return sendJson(res, 400, { error: `t is not a time: "${t}"` })
-        const path = findSnapshot(t == null ? [fixtures] : [recordings, fixtures], feed, at)
-        if (path == null) return sendJson(res, 404, { error: `no snapshot of the ${feed} feed; run scripts/record-feeds.ts` })
-        return sendJson(res, 200, simplifyFeed(feed, t == null ? "fixture" : "recorded", readFileSync(path)))
+        const buffer = findSnapshot(t == null ? [fixtures] : [recordings, fixtures], feed, at)
+        if (buffer == null) return sendJson(res, 404, { error: `no snapshot of the ${feed} feed; run scripts/record-feeds.ts` })
+        return sendJson(res, 200, simplifyFeed(feed, t == null ? "fixture" : "recorded", buffer))
       }
       try {
         sendJson(res, 200, await live(feed))
