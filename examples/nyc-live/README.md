@@ -62,6 +62,26 @@ tokens, a fraction of a cent.
 The key is read on the server side only: by `check:visual` and, once the "ask the
 city" panel exists, by the dev server's `/api/ask`. It never reaches the browser.
 
+## Review it
+
+The [reviewer overlay](../../reviewer-overlay/) lets a person pin notes, with a
+screenshot, on the running app; each note reaches an agent's mesh inbox. Start the
+overlay server with every origin the app is opened from, then point the dev server
+at it:
+
+```bash
+pnpm overlay --origin http://127.0.0.1:5180 --target <reviewer agent id> \
+  --plan "$PWD/examples/nyc-live/plan/review-plan.json"     # from the repository root
+NYC_LIVE_OVERLAY=http://127.0.0.1:4848 pnpm --dir examples/nyc-live dev
+```
+
+The dev server adds the overlay's script to the page and forwards the script and
+`/api/review` on the app's own origin, so the browser only talks to the app. That
+also works through a proxy such as `tailscale serve` (add the proxy's origin with
+another `--origin`, and its host to `NYC_LIVE_ALLOWED_HOSTS`). The overlay never
+enters a production build. Its screenshot is the shared browser tab, so it shows the
+3D scene; each note carries the page URL, whose hash is the exact view.
+
 ## Settings
 
 | Variable | Default | Use |
@@ -72,6 +92,7 @@ city" panel exists, by the dev server's `/api/ask`. It never reaches the browser
 | `NYC_LIVE_ALLOWED_HOSTS` | none | Extra `Host` names the dev server accepts, comma separated, for a proxy such as `tailscale serve`. The server listens on 127.0.0.1 only. |
 | `CHROME` | auto | A Chrome or Chromium binary, if the search does not find one. |
 | `OPENAI_API_KEY` | none | For `check:visual` and `/api/ask`. |
+| `NYC_LIVE_OVERLAY` | none | The reviewer overlay's server (`http://127.0.0.1:4848`). The dev server then adds the overlay to the page and forwards it on the app's own origin. |
 
 ## Data
 

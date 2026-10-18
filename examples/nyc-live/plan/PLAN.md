@@ -40,6 +40,7 @@ shared seams, so no ticket needs to touch `main.ts`, `vite.config.ts` or the lay
 | View state | `src/view-state.ts` | The URL hash. Owned by the base; ask the orchestrator before changing it. |
 | Coordinates | `src/geo.ts` | `toLocal({lat, lon})` gives metres from the venue: x east, z south, y up. |
 | UI | `src/ui/controls.ts`, `src/ask/panel.ts` | T7 and T6. |
+| Review overlay | `NYC_LIVE_OVERLAY` in `vite.config.ts` | The dev server adds the reviewer overlay and serves it on the app's own origin. T9 proves it end to end. |
 
 Serialization points: `src/constants.ts` and `src/view-state.ts` (one writer at a
 time, through the orchestrator); `package.json` and `pnpm-lock.yaml` (add a dependency
@@ -66,7 +67,8 @@ one at a time); `README.md` (T8 only).
 
 ## Tickets
 
-Wave 1 starts at once (6 workers). T4 starts when T3 is merged into the integration
+Wave 1 is T1, T2, T3, T5, T6, T7 and T9. With at most 6 workers at a time, T9 (the
+smallest) takes the first free slot. T4 starts when T3 is merged into the integration
 branch; T8 starts when all others are.
 
 ### T1. Buildings
@@ -168,10 +170,30 @@ branch; T8 starts when all others are.
 - **Build:** wire T4 and T5 data into T6's live `CityState`; tune depth and opacity
   so buildings, ground and subway read clearly together; check memory and frame time
   with everything on; write the morning test plan (`plan/review-plan.json`, schema in
-  the `human-review` skill) with steps that each open a URL hash.
+  the `human-review` skill) with steps that each open a URL hash. The overlay reads
+  it with `--plan <absolute path>`.
 - **Verify:** the full suite: every ticket's checks, plus `checks/stage.json` on the
   Venue view at night: "trains are visible under the venue", "the panel answers a
   route question".
+
+### T9. Review in the app
+
+- **Owns:** `scripts/review-e2e.ts`, `checks/review-note.json`, the "Review it"
+  section of `README.md` (T8 owns the rest of the README).
+- **Build:** one command that proves a person can review the app with the reviewer
+  overlay (`/human-review`). It starts its own throwaway mesh (its own Redis and
+  `AGENT_MESH_HOME`, never the run's mesh), registers a reviewer agent, starts the
+  overlay server for the app's origin, a dev server with `NYC_LIVE_OVERLAY`, and a
+  headless Chrome that accepts tab capture (`--auto-accept-this-tab-capture`, as in
+  `reviewer-overlay/e2e/run.sh`). It opens a view with `sel=bin:1007945`, opens the
+  Reviewer panel, drops a pin on the venue, sends a note, then reads the reviewer's
+  inbox and stops everything it started.
+- **Verify:** the note arrives with the comment, a page URL whose hash parses to the
+  view that was open, and a screenshot. `check:visual` on that screenshot:
+  "a 3D map scene is visible, not a blank or black canvas", "a numbered pin marker
+  is drawn on the image". The command exits 0 only when all of that holds.
+- **Done:** reviewing the app needs only the two commands in "Review it", and they
+  also work through a proxy (a second `--origin` plus `NYC_LIVE_ALLOWED_HOSTS`).
 
 ## Out of scope
 

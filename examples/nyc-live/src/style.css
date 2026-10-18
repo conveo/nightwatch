@@ -60,9 +60,10 @@ body {
   font-size: 24px;
 }
 
+/* Bottom left: the reviewer overlay's button sits bottom right. */
 #attribution {
   position: fixed;
-  right: 12px;
+  left: 12px;
   bottom: 8px;
   font-size: 14px;
   color: var(--muted);
