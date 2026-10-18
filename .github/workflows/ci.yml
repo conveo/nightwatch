@@ -9,8 +9,51 @@ permissions:
   contents: read
 
 jobs:
+  # Pull requests run only the jobs whose folders changed, so a PR under
+  # examples/nyc-live/ does not wait on the mesh suite. Pushes to main run everything.
+  # A conflicting PR runs no workflow at all, so a PR without this job's check has
+  # skipped CI; one with it and some jobs skipped is normal.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mesh: ${{ steps.areas.outputs.mesh }}
+      dashboard: ${{ steps.areas.outputs.dashboard }}
+      overlay: ${{ steps.areas.outputs.overlay }}
+      nyc-live: ${{ steps.areas.outputs.nyc-live }}
+      skills: ${{ steps.areas.outputs.skills }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: areas
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            files="$(git diff --name-only "$BASE"...HEAD)"
+          else
+            files="*"
+          fi
+          printf 'changed files:\n%s\n' "$files"
+          shared='\.github/workflows/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$'
+          area() {
+            if [ "$files" = "*" ] || printf '%s\n' "$files" | grep -q -E "^($1|$shared)"; then echo true; else echo false; fi
+          }
+          {
+            echo "mesh=$(area 'agent-mesh/|docker-compose\.yml$|scripts/')"
+            echo "dashboard=$(area 'agent-mesh/dashboard/')"
+            echo "overlay=$(area 'reviewer-overlay/')"
+            echo "nyc-live=$(area 'examples/nyc-live/')"
+            echo "skills=$(area 'skills/')"
+          } | tee -a "$GITHUB_OUTPUT"
+
   mesh:
     name: Typecheck, tests, verify.sh
+    needs: changes
+    if: needs.changes.outputs.mesh == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -46,6 +89,8 @@ jobs:
 
   dashboard:
     name: Dashboard build
+    needs: changes
+    if: needs.changes.outputs.dashboard == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -62,6 +107,8 @@ jobs:
 
   overlay:
     name: Reviewer overlay typecheck, tests, client build
+    needs: changes
+    if: needs.changes.outputs.overlay == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -81,6 +128,8 @@ jobs:
 
   nyc-live:
     name: nyc-live example typecheck, tests, build
+    needs: changes
+    if: needs.changes.outputs.nyc-live == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -99,6 +148,8 @@ jobs:
 
   skills:
     name: Skill files parse
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
