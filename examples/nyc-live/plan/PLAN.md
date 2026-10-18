@@ -62,13 +62,17 @@ one at a time); `README.md` (T8 only).
 - Gate: CI green, the review bot's 5/5 on the PR head, 0 unresolved threads, 0
   outstanding comments outside the diff. Paste the `check:visual` output and attach
   the screenshot in the PR body.
+- The review bot reviews only a PR's first push. After every later push, reply to
+  each finding you fixed (naming the commit), resolve the thread, and ask for a new
+  review in a PR comment (`@greptile please review again`). The score counts only
+  when the PR body's "Last reviewed commit" is your current head.
 - Never commit downloaded data (`data/` is ignored); fixtures stay small (under
   300 KB each). Keep every PR under 100 files: the review bot stops there.
 
 ## Tickets
 
-Wave 1 is T1, T2, T3, T5, T6, T7 and T9. With at most 6 workers at a time, T9 (the
-smallest) takes the first free slot. T4 starts when T3 is merged into the integration
+Wave 1 is T1, T2, T3, T5, T6, T7, T9 and T10. With at most 6 workers at a time,
+T9 and T10 take the first free slots. T4 starts when T3 is merged into the integration
 branch; T8 starts when all others are.
 
 ### T1. Buildings
@@ -195,6 +199,24 @@ branch; T8 starts when all others are.
 - **Done:** reviewing the app needs only the two commands in "Review it", and they
   also work through a proxy (a second `--origin` plus `NYC_LIVE_ALLOWED_HOSTS`).
 
+### T10. The reviewer overlay looks like the in-app reviewer
+
+- **Owns:** `reviewer-overlay/src/client/` (look only), `reviewer-overlay/test/`
+  additions, the screenshots in `reviewer-overlay/README.md`.
+- **Build:** restyle the overlay's launcher button, panel, pins and drawing to match
+  the design reference screenshots named in your spawn prompt (they are not in the
+  repository). The launcher carries the animated agent-mesh mark, inlined from
+  `agent-mesh/dashboard/public/agentmesh-mark.svg`. Copy the design only, never code.
+  Keep the behaviour, the HTTP API, the message contract, and every label and
+  selector that `reviewer-overlay/e2e/run.sh` and T9 use.
+- **Verify:** `pnpm --dir reviewer-overlay typecheck`, `test` and `build` pass, and
+  `bash reviewer-overlay/e2e/run.sh` passes with its script unchanged. Screenshot the
+  closed launcher and the open panel over nyc-live, and check them with the Decisions
+  API against the reference, sending both images in one request: "the launcher shows
+  the mesh mark", "the panel's layout and colours match the reference" (score, at
+  least "close").
+
 ## Out of scope
 
-Accounts, saved data on a server, deployment, and anything outside `examples/nyc-live/`.
+Accounts, saved data on a server, deployment, and anything outside `examples/nyc-live/`
+(T10 alone works in `reviewer-overlay/`).
