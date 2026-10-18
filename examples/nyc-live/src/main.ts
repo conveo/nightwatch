@@ -146,8 +146,13 @@ renderer.setAnimationLoop((now) => {
 // A layer that fails to load is reported, not fatal: the rest of the city still draws.
 const results = await Promise.allSettled(layers.map((layer) => layer.init({ mode: view.mode, time: view.t })))
 const errors = results.flatMap((r, i) => (r.status === "rejected" ? [`${layers[i]!.id}: ${String(r.reason)}`] : []))
-const summaries = layers.map((l) => l.summary?.()).filter((s): s is string => s != null && s !== "")
-status.textContent = [...summaries, ...errors.map((e) => `failed: ${e}`)].join(" · ") || "ready"
+// Live layers refresh their data, so the status line is read again every few seconds.
+function renderStatus(): void {
+  const summaries = layers.map((l) => l.summary?.()).filter((s): s is string => s != null && s !== "")
+  status.textContent = [...summaries, ...errors.map((e) => `failed: ${e}`)].join(" · ") || "ready"
+}
+renderStatus()
+setInterval(renderStatus, 5_000)
 for (const layer of layers) layer.select?.(view.sel)
 
 // Two frames after the last layer loads, everything is on screen.

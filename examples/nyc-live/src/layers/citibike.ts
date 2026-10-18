@@ -47,8 +47,7 @@ export function barSegments(dock: CitibikeDock): [classic: BarSegment, ebike: Ba
 }
 
 // For the HUD. Like the bars, it counts only bikes at docks that are renting. It
-// ends with the feed's time in New York, because main.ts reads it once after
-// startup: after a live refresh, the line still says which moment it describes.
+// ends with the feed's time in New York, so the line says which moment it describes.
 export function summarize(snapshot: CitibikeSnapshot): string {
   const renting = snapshot.docks.filter((d) => d.renting)
   const bikes = renting.reduce((n, d) => n + d.bikes, 0)
