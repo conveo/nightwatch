@@ -120,6 +120,19 @@ test("lines between the same stations are one option unless their status differs
   assert.ok(values.includes("F train"), values.join(" | "))
 })
 
+test("a station nearest to both ends is not offered as a ride", () => {
+  // Bleecker St is the 6's nearest station both to the venue and to the park.
+  const park = planQuestion({ template: "route", place: "washington-square-park" }, state).request.questions[0]!
+  assert.ok(park.type === "choice" && !park.choices.some((c) => c.value === "6 train"))
+  for (const place of state.places) {
+    const question = planQuestion({ template: "route", place: place.id }, state).request.questions[0]!
+    for (const choice of question.type === "choice" ? question.choices : []) {
+      const ride = /^From (.+?) \([^)]*\) to (.+?) \(/.exec(choice.description ?? "")
+      if (ride != null) assert.notEqual(ride[1], ride[2], `${place.name}: ${choice.description}`)
+    }
+  }
+})
+
 test("line and yes/no questions are one predicate each", () => {
   const line = planQuestion({ template: "line", line: "F" }, state)
   assert.deepEqual(line.request.questions.map((q) => [q.type, q.name]), [["predicate", "line_normal"]])

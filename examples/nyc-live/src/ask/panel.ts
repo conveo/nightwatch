@@ -179,12 +179,24 @@ export function mountAskPanel(root: HTMLElement, getView: () => ViewState): Prom
     void ask(q)
   })
 
+  // Back to how the panel opens when the URL holds no question: no request
+  // pending, no answer, the form at its first options.
+  function clear(): void {
+    inFlight?.abort()
+    inFlight = null
+    submit.disabled = false
+    form.reset()
+    showTemplate()
+    result.hidden = true
+    status.textContent = ""
+  }
+
   window.addEventListener("hashchange", () => {
     const raw = parseViewState(location.hash).ask
     if (raw === asked) return
     asked = raw
     const q = parseAsk(raw)
-    if (q == null) return
+    if (q == null) return clear()
     fillForm(q)
     void ask(q)
   })

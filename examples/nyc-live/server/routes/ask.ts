@@ -147,7 +147,9 @@ function routePlan(state: CityState, place: Place): Plan {
   const groups = new Map<string, { from: Station & { distanceM: number }; to: Station & { distanceM: number }; lines: LineService[] }>()
   for (const line of state.lines) {
     const from = fromStations.find((s) => s.lines.includes(line.id))
-    const to = toStations.find((s) => s.lines.includes(line.id))
+    // A ride needs two different stations: when one station is the nearest at both
+    // ends, there is nothing to ride, and walking is already an option.
+    const to = from == null ? undefined : toStations.find((s) => s.lines.includes(line.id) && s.id !== from.id)
     if (from == null || to == null) continue
     const key = `${from.id} ${to.id} ${line.status}`
     const group = groups.get(key)
