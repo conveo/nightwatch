@@ -706,7 +706,9 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
     const height = composer.offsetHeight || 180
     // The open panel docks on the right, so the composer fits in the space left
     // of it, and flips to the anchor's left side when the right side is short.
-    const panelLeft = state.open ? panel.getBoundingClientRect().left : window.innerWidth
+    // On narrow screens the panel steps aside in comment mode (no layout box).
+    const panelShown = state.open && panel.getClientRects().length > 0
+    const panelLeft = panelShown ? panel.getBoundingClientRect().left : window.innerWidth
     const right = panelLeft - width - COMPOSER_GAP_PX >= COMPOSER_GAP_PX ? panelLeft : window.innerWidth
     const beside = anchor.x + 18 + width + COMPOSER_GAP_PX <= right ? anchor.x + 18 : anchor.x - 18 - width
     const left = clamp({ value: beside, min: COMPOSER_GAP_PX, max: right - width - COMPOSER_GAP_PX })
@@ -904,7 +906,8 @@ export function createOverlay(options: OverlayOptions): { destroy: () => void } 
   }
 
   function render() {
-    root.className = state.open ? "root panel-open" : "root"
+    root.classList.toggle("panel-open", state.open)
+    root.classList.toggle("commenting", state.commentMode)
     bubble.hidden = state.open
     panel.hidden = !state.open
     targetRow.hidden = state.config?.canChooseTarget !== true
