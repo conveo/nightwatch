@@ -1,12 +1,13 @@
 # nyc-live: lower Manhattan, live, in 3D
 
-An example app for nightwatch to build overnight: lower Manhattan's buildings in
+An example app that a nightwatch run built overnight: lower Manhattan's buildings in
 three.js, the subway lines below the streets, trains moving in real time, Citi Bike
 docks, and an "ask the city" panel that answers typed questions about the live state.
 
-This folder starts as a **base**: the app shell, the view state in the URL, one empty
-file per layer, and the checks every worker uses to verify its own ticket. The plan
-the fleet builds from is [plan/PLAN.md](plan/PLAN.md).
+It started as a **base** (the app shell, the view state in the URL, one empty file
+per layer, and the checks every worker uses to verify its own ticket), and the fleet
+filled it in ticket by ticket from [plan/PLAN.md](plan/PLAN.md). The morning test
+plan, one view per feature, is [plan/review-plan.json](plan/review-plan.json).
 
 ## Run it
 
@@ -18,18 +19,44 @@ pnpm --dir examples/nyc-live install
 pnpm --dir examples/nyc-live dev          # http://127.0.0.1:5180
 ```
 
-Drag to pan, right-drag to rotate, scroll to zoom. The URL hash always describes the
-current view, for example:
+Drag to pan, right-drag to rotate, scroll to zoom (one finger pans and two rotate and
+zoom on a touch screen), or use the toolbar's camera presets, layer toggles and
+day/night switch. The URL hash always describes the current view, also while the
+camera still glides after a drag, for example:
 
 ```
-#cam=320,420,620&tgt=0,0,0&sel=bin:1007945&mode=recorded&t=2026-10-21T23:10:00Z&layers=buildings,subway
+#cam=320,420,620&tgt=0,0,0&sel=bin:1007945&mode=recorded&t=2026-10-18T23:02:17Z&layers=buildings,subway&light=night&ask=route:brooklyn-bridge
 ```
 
 `cam` and `tgt` are the camera and its target in metres from 598 Broadway (x east,
-y up, z south). `mode` is `fixture` (small committed samples), `recorded` (a saved
-feed, at time `t`) or `live`. `layers` limits what is drawn. Because the hash is the
-whole view, a [reviewer-overlay](../../reviewer-overlay/) note, which carries the
-page URL, lets an agent open exactly what the reviewer saw.
+y up, z south). `sel` is what is selected: a building (`bin:<BIN>`), a subway line
+(`route:N`) or a station (`stop:R22`). `mode` is `fixture` (small committed samples),
+`recorded` (a saved feed, at time `t`) or `live`; a link to another mode or time
+reloads the page. `layers` limits what is drawn, `light` is `day` or `night`, and
+`ask` is the question in the "ask the city" panel. Because the hash is the whole
+view, a [reviewer-overlay](../../reviewer-overlay/) note, which carries the page URL,
+lets an agent open exactly what the reviewer saw.
+
+Fixture mode works offline from `public/fixtures/`. Recorded and live mode draw the
+whole area once its data is downloaded into `data/` (not committed); until then they
+draw the fixtures and the status line says so:
+
+```bash
+node scripts/fetch-buildings.ts    # data/buildings.json, NYC Open Data
+node scripts/fetch-subway.ts       # data/subway.json, the MTA's static GTFS
+node scripts/record-feeds.ts --every 30 --minutes 60   # data/trains/, a recording for recorded mode
+```
+
+The ground, the Citi Bike docks outside live mode and a short recording of the
+trains (Oct 18, 7:02 PM ET) are committed, so recorded mode at
+`t=2026-10-18T23:02:17Z` works without downloading anything. Live mode needs the dev
+server to reach the MTA's and Citi Bike's feeds; the browser only talks to the dev
+server.
+
+The subway is drawn twice: as lit tubes 12 m below the street, and again
+see-through, so the lines read through the ground and, fainter, through the
+buildings, and the trains clearly through both. The see-through copy fades out as
+the camera comes down to street level.
 
 ## Check it
 
@@ -59,8 +86,34 @@ them back and needs no key. That is how [test/check-visual.test.ts](test/check-v
 runs a real screenshot's real answers in CI. A visual check costs about 2,000 input
 tokens, a fraction of a cent.
 
-The key is read on the server side only: by `check:visual` and, once the "ask the
-city" panel exists, by the dev server's `/api/ask`. It never reaches the browser.
+The key is read on the server side only: by `check:visual` and by the dev server's
+`/api/ask`. It never reaches the browser.
+
+## Ask the city
+
+The panel at the top right turns a question (the fastest way from the venue to a
+place, whether a line runs normally, or a free yes/no question) and the city's
+current state into one Decisions API request, and shows the answer with its
+probability; a route answer also highlights its line in the scene. The state comes
+from the view's mode, and the panel says which:
+
+- **fixture**: a hand-made weekday evening ([server/city-state.ts](server/city-state.ts)).
+- **recorded**: the trains in the saved feed at `t`, and the committed Citi Bike docks.
+- **live**: the MTA's realtime feeds and Citi Bike's GBFS feed now, through the same
+  caches as the layers' own routes.
+
+Line service is worked out from the trains: the minutes between trains at each line's
+busiest platform over the next hour, "reduced" past 15 minutes, "suspended" when no
+train of the line is in the feed. `GET /api/city?mode=live` (or
+`?mode=recorded&t=…`) shows the state a question is answered from.
+
+## How it performs
+
+With everything on, the whole area (13,000 buildings, 20 subway lines, about 30
+trains, 235 Citi Bike docks) takes 82 to 88 draw calls and about 0.55 million
+triangles, loads in about 2.5 s, and holds about 14 MB of JavaScript heap once
+loaded. `window.__nycLive.stats()` reports the draw calls, triangles and GPU objects
+of the last frame.
 
 ## Review it
 

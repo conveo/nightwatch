@@ -277,3 +277,17 @@ test("the morning review plan opens a view for every feature a person can see", 
   }
   assert.doesNotMatch(readFileSync("plan/review-plan.json", "utf8"), /localhost|127\.0\.0\.1|https?:\/\//)
 })
+
+// test/fixtures/stage.png is the stage view (the Venue preset at night in recorded
+// mode, with the route question asked: the plan's first feature), and test/recordings/
+// holds the Decisions API's real answers for it.
+test("the recorded stage screenshot passes its checks: trains under the venue, a route answered", () => {
+  const env = { ...process.env }
+  delete env.OPENAI_API_KEY
+  const run = spawnSync(process.execPath, ["scripts/check-visual.ts", "test/fixtures/stage.png", "checks/stage.json", "--replay"], {
+    encoding: "utf8",
+    env,
+  })
+  assert.equal(run.status, 0, run.stderr)
+  assert.equal(run.stdout.match(/^PASS /gm)?.length, 5, run.stdout)
+})

@@ -1,0 +1,48 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "trains_under_venue",
+      "probability": 0.95
+    },
+    {
+      "type": "predicate",
+      "name": "route_answer",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "night",
+      "probability": 0.97
+    },
+    {
+      "type": "predicate",
+      "name": "panels_apart",
+      "probability": 1
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "score": 0.7,
+      "probabilities": [
+        {
+          "value": 0,
+          "label": "poor",
+          "probability": 0.3
+        },
+        {
+          "value": 1,
+          "label": "acceptable",
+          "probability": 0.7
+        },
+        {
+          "value": 2,
+          "label": "good",
+          "probability": 0
+        }
+      ],
+      "confidence": 0.55
+    }
+  ]
+}
