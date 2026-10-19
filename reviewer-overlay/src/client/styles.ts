@@ -223,6 +223,11 @@ a.link:hover { background: var(--line); }
 }
 .toolbar .sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--ink-line); }
 .toolbar .status { flex-basis: 100%; padding: 2px 10px 4px; color: var(--ink-fg); }
+/* On narrow screens the docked panel would cover most of the page, so it steps
+   aside while the reviewer pins or draws; Done in the toolbar brings it back. */
+@media (max-width: 719px) {
+  .root.commenting .panel { display: none; }
+}
 /* The toolbar sits above the docked panel, and centres in the space beside it
    when the window leaves enough room. */
 @media (min-width: 900px) {
