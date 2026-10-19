@@ -21,11 +21,12 @@ import {
 } from "../server/routes/city.ts"
 import { createMtaSource, FIXTURES_DIR, type MtaSource } from "../server/routes/mta.ts"
 import type { AskOptions } from "../src/ask/types.ts"
-import { xrayFade } from "../src/layers/subway.ts"
+import { xrayFade, type SubwayData } from "../src/layers/subway.ts"
 import { createVenueLayer } from "../src/layers/venue.ts"
-import type { FeedTrip, TrainFeed } from "../src/layers/trains.ts"
+import { createTrainsLayer, playbackTime, type FeedTrip, type TrainFeed } from "../src/layers/trains.ts"
 import { followCamera, PRESETS } from "../src/ui/camera.ts"
 import { VENUE_MARKER, venueMarkerTop } from "../src/ui/labels.ts"
+import { statusLine } from "../src/ui/layers.ts"
 import { parseViewState, serializeViewState } from "../src/view-state.ts"
 
 // How the tickets' pieces work together (T8 in plan/PLAN.md): the city state "ask the
@@ -274,6 +275,47 @@ test("the see-through subway fades out as the camera comes down to the street", 
   assert.equal(xrayFade(40), 0)
   assert.ok(xrayFade(120) > 0 && xrayFade(120) < 1)
   assert.equal(xrayFade(370.8), 1) // the lowest other preset, Brooklyn Bridge
+})
+
+test("recorded playback tells the view which moment is on screen", async () => {
+  const subway = JSON.parse(readFileSync("public/fixtures/subway.json", "utf8")) as SubwayData
+  const source = createMtaSource({ recordings: mkdtempSync(join(tmpdir(), "nyc-live-no-recordings-")), fixtures: FIXTURES_DIR })
+  const layerIn = async (mode: "fixture" | "recorded" | "live", time: string | null) => {
+    const layer = createTrainsLayer({
+      loadSubway: async () => subway,
+      loadFeed: async (feed, _mode, t) => source.recorded(feed, t == null ? null : Date.parse(t) / 1000)!,
+    })
+    const before = performance.now()
+    await layer.init({ mode, time })
+    return { layer, before, after: performance.now() }
+  }
+  const { layer, before, after } = await layerIn("recorded", "2026-10-18T23:11:12Z")
+  // The clock started during init, at the URL's time, and plays on in real time.
+  assert.ok(after - before < 1000, `init took ${Math.round(after - before)} ms`)
+  assert.equal(playbackTime(layer, after), "2026-10-18T23:11:12Z")
+  assert.equal(playbackTime(layer, after + 60_000), "2026-10-18T23:12:12Z")
+  assert.equal(playbackTime((await layerIn("fixture", null)).layer), null)
+  // Another layer has no playback clock.
+  assert.equal(playbackTime(createVenueLayer()), null)
+})
+
+test("the status line drops a startup failure once the layer recovers", () => {
+  let docks: string | null = null
+  const layers = [
+    { id: "ground", summary: () => "6,608 street segments" },
+    { id: "buildings", summary: () => "670 buildings" },
+    { id: "citibike", summary: () => docks },
+    { id: "venue", summary: () => "598 Broadway" },
+  ]
+  const failures = new Map([["citibike", "Error: /api/citibike: HTTP 502"]])
+  const quiet = new Set(["ground", "venue"])
+  assert.equal(statusLine(layers, failures, quiet), "670 buildings · failed: citibike: Error: /api/citibike: HTTP 502")
+  // A later retry draws the docks: their summary replaces the old failure, for good.
+  docks = "235 Citi Bike docks · 8,067 bikes (3,537 e-bikes) at 19:57"
+  assert.equal(statusLine(layers, failures, quiet), `670 buildings · ${docks}`)
+  docks = null
+  assert.equal(statusLine(layers, failures, quiet), "670 buildings")
+  assert.equal(statusLine([], new Map()), "ready")
 })
 
 // A 1600x900 screen looking at a preset's view.
