@@ -30,8 +30,7 @@
       "src/client/annotate.ts",
       "src/client/mark.ts",
       "src/client/icons.ts"
-    ],
-    "sha256": "b83ef702ac4041e069493c2c6e60e38825159c2018fd4bfdf56d2830d2a137f5"
+    ]
   },
   "checks": [
     {

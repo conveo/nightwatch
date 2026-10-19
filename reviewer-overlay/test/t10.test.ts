@@ -41,9 +41,10 @@ describe("T10 design check", () => {
     assert.equal(run.status, 2, run.stdout)
   })
 
-  it("fails when the look changed since the screenshots were checked", () => {
-    const spec = JSON.parse(readFileSync("test/checks/t10.json", "utf8")) as { look: { sha256: string } }
-    const stale = { ...spec, look: { ...spec.look, sha256: "0".repeat(64) } }
+  it("fails when the look changed since the answers were recorded", () => {
+    // Fewer look files give another fingerprint, as an edit to one of them would.
+    const spec = JSON.parse(readFileSync("test/checks/t10.json", "utf8")) as { look: { files: string[] } }
+    const stale = { ...spec, look: { files: spec.look.files.slice(1) } }
     const path = join(mkdtempSync(join(tmpdir(), "reviewer-overlay-stale-")), "t10.json")
     writeFileSync(path, JSON.stringify(stale))
     const run = designCheck(path, "--replay")

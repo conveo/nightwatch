@@ -12,9 +12,10 @@
 // 2 when the checks could not run.
 //
 // Answers about screenshots of an older look prove nothing, so the check file
-// also fingerprints the files that decide the look (`look`): --replay fails when
-// they changed since the last passing --record, and a passing --record updates
-// the fingerprint. Retake the screenshots before you record again.
+// names the files that decide the look (`look`) and every recording stores their
+// fingerprint at the time it was recorded: --replay fails when those files have
+// changed since, so a change to the look needs a new --record, which rewrites
+// the recording. Retake the screenshots before you record again.
 
 import { createHash } from "node:crypto"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -33,7 +34,7 @@ type Spec = {
   context: string
   references: Array<{ name: string; caption: string; sha256: string }>
   shots: Array<{ name: string; caption: string; path: string }>
-  look?: { files: string[]; sha256: string }
+  look?: { files: string[] }
   checks: Check[]
 }
 
@@ -125,12 +126,8 @@ async function main(): Promise<number> {
   const shotHashes = new Map([...shots].map(([name, png]) => [name, sha256(png)]))
   const file = join(values.recordings, `${recordingKey(spec, shotHashes)}.json`)
 
+  const look = spec.look == null ? null : lookSha256(spec.look.files)
   let answers: Answer[]
-  if (values.replay && spec.look != null && lookSha256(spec.look.files) !== spec.look.sha256) {
-    console.log(`FAIL  ${"look_is_current".padEnd(24)} ${spec.look.files.join(", ")} changed since the screenshots were checked`)
-    console.error("retake the screenshots in the check file and run it again with --record")
-    return 1
-  }
   if (values.replay) {
     let text: string
     try {
@@ -139,7 +136,13 @@ async function main(): Promise<number> {
       console.error(`design-check could not run: no recorded answer at ${file}; run once with a key and --record`)
       return 2
     }
-    answers = (JSON.parse(text) as { answers: Answer[] }).answers
+    const recording = JSON.parse(text) as { look?: string | null; answers: Answer[] }
+    if (look != null && recording.look !== look) {
+      console.log(`FAIL  ${"look_is_current".padEnd(24)} ${spec.look?.files.join(", ")} changed since the answers were recorded`)
+      console.error("retake the screenshots in the check file and run it again with --record")
+      return 1
+    }
+    answers = recording.answers
   } else {
     const references = new Map<string, Buffer>()
     for (const pair of values.reference) {
@@ -181,19 +184,14 @@ async function main(): Promise<number> {
     answers = parsed.answers
     if (values.record) {
       mkdirSync(values.recordings, { recursive: true })
-      writeFileSync(file, `${JSON.stringify({ model: parsed.model, answers }, null, 2)}\n`)
+      writeFileSync(file, `${JSON.stringify({ model: parsed.model, look, answers }, null, 2)}\n`)
     }
   }
   const results = evaluate(spec.checks, answers)
   for (const result of results) {
     console.log(`${result.pass ? "PASS" : "FAIL"}  ${result.name.padEnd(24)} ${result.detail}`)
   }
-  const passed = results.every((result) => result.pass)
-  if (values.record && passed && spec.look != null) {
-    spec.look.sha256 = lookSha256(spec.look.files)
-    writeFileSync(specPath, `${JSON.stringify(spec, null, 2)}\n`)
-  }
-  return passed ? 0 : 1
+  return results.every((result) => result.pass) ? 0 : 1
 }
 
 exit(await main())

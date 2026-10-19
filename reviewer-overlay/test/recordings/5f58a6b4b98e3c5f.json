@@ -1,5 +1,6 @@
 {
   "model": "gpt-6-luna",
+  "look": "b83ef702ac4041e069493c2c6e60e38825159c2018fd4bfdf56d2830d2a137f5",
   "answers": [
     {
       "type": "predicate",
