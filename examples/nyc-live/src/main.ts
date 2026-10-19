@@ -19,8 +19,10 @@ import "./style.css"
 
 declare global {
   interface Window {
-    // Read by scripts/shot.ts, which takes its screenshot once `ready` is true.
-    __nycLive?: { ready: boolean; layers: string[]; errors: string[]; view: ViewState }
+    // Read by scripts/shot.ts, which takes its screenshot once `ready` is true. `stats`
+    // reports the last frame's draw calls and triangles and the GPU objects held, for
+    // checking the cost of everything on at once without a GPU profiler.
+    __nycLive?: { ready: boolean; layers: string[]; errors: string[]; view: ViewState; stats(): Record<string, number> }
   }
 }
 
@@ -103,6 +105,9 @@ controls.addEventListener("end", follow.ended)
 const near = (a: Vec3, b: Vec3) => a.every((v, i) => Math.abs(v - b[i]!) < 0.06)
 window.addEventListener("hashchange", () => {
   const next = parseViewState(location.hash)
+  // Layers load their data once, for one mode and time: a link to another (a review
+  // plan's step, an edited URL) loads the page again.
+  if (next.mode !== view.mode || next.t !== view.t) return location.reload()
   const keepCamera = near(next.cam, view.cam) && near(next.tgt, view.tgt)
   applyView(keepCamera ? { ...next, cam: camera.position.toArray(), tgt: controls.target.toArray() } : next)
 })
@@ -173,6 +178,12 @@ await askSettled
 // Two frames after the last layer loads, everything is on screen.
 requestAnimationFrame(() =>
   requestAnimationFrame(() => {
-    window.__nycLive = { ready: true, layers: layers.map((l) => l.id), errors, view }
+    window.__nycLive = {
+      ready: true,
+      layers: layers.map((l) => l.id),
+      errors,
+      view,
+      stats: () => ({ ...renderer.info.render, ...renderer.info.memory }),
+    }
   }),
 )

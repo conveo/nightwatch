@@ -45,7 +45,9 @@ function service(id: string, headwayMin: number | null, status: LineStatus, note
 // delays (those are in the MTA's alerts, not read here), so a line is "normal" when
 // its trains come at least every REDUCED_HEADWAY_MIN, "reduced" when they come less
 // often or fewer than two arrive in the hour, and "suspended" when no trip of it is
-// in the feed at all. Lines whose feed is missing are left out, not guessed.
+// in the feed at all. Lines whose feed is missing are left out, not guessed. The
+// headway is the line's wherever it runs, so a weekend reroute away from these
+// stations still counts as running.
 export function lineServices(feeds: TrainFeed[], at: number, lines: string[] = LINES): LineService[] {
   const present = new Set(feeds.flatMap((f) => FEEDS[f.feed] ?? []))
   // Per line, per platform ("R22N"): when its trains arrive in the hour from `at`.

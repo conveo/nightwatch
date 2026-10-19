@@ -75,8 +75,11 @@ export function offset(point: Vec3, heading: number, forward: number, right: num
 export type PresetId = "venue" | "battery" | "brooklyn-bridge" | "above" | "street"
 export type Preset = { id: PresetId; label: string; view: CameraView }
 
-// Broadway runs a few degrees east of the street grid as it passes the venue.
-const BROADWAY_HEADING_DEG = 32
+// Broadway runs a few degrees east of the street grid as it passes the venue, and its
+// centreline is 40 m west of the venue's point (mid-block, on Broadway's east side):
+// both measured on the street centrelines in public/fixtures/ground.json.
+const BROADWAY_HEADING_DEG = 33
+const BROADWAY_OFFSET_M = -40
 
 export const PRESETS: readonly Preset[] = [
   // The view the app opens on.
@@ -108,13 +111,13 @@ export const PRESETS: readonly Preset[] = [
       }),
     ),
   },
-  // Eye height on Broadway, 300 m south of the venue, looking north at it. The
-  // venue's building is on the east side of Broadway, so the street is to its west.
+  // Eye height in the middle of Broadway, 300 m south of the venue, looking north up
+  // the street towards it.
   {
     id: "street",
     label: "Street level",
     view: roundView(
-      poseToView({ target: offset([0, 0, 0], BROADWAY_HEADING_DEG, -150, -25), distance: 150, pitch: 3, heading: BROADWAY_HEADING_DEG }),
+      poseToView({ target: offset([0, 0, 0], BROADWAY_HEADING_DEG, -150, BROADWAY_OFFSET_M), distance: 150, pitch: 3, heading: BROADWAY_HEADING_DEG }),
     ),
   },
 ]

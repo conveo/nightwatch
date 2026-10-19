@@ -1,0 +1,279 @@
+import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
+import { mkdtempSync, readFileSync } from "node:fs"
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { mock, test } from "node:test"
+import { routesMiddleware, type Route } from "../server/api.ts"
+import { fixtureProvider, type CityStateProvider } from "../server/city-state.ts"
+import { createAskRoutes } from "../server/routes/ask.ts"
+import type { CitibikeSnapshot } from "../server/routes/citibike.ts"
+import {
+  cityRoute,
+  createLiveProvider,
+  createRecordedProvider,
+  docksFrom,
+  LINES,
+  lineServices,
+} from "../server/routes/city.ts"
+import { createMtaSource, FIXTURES_DIR, type MtaSource } from "../server/routes/mta.ts"
+import type { AskOptions } from "../src/ask/types.ts"
+import { xrayFade } from "../src/constants.ts"
+import type { FeedTrip, TrainFeed } from "../src/layers/trains.ts"
+import { followCamera } from "../src/ui/camera.ts"
+import { parseViewState, serializeViewState } from "../src/view-state.ts"
+
+// How the tickets' pieces work together (T8 in plan/PLAN.md): the city state "ask the
+// city" answers from in recorded and live mode, the URL following a gliding camera,
+// the see-through subway's fade, the morning review plan, and the stage screenshot.
+
+const AT = 1_792_364_537 // 2026-10-18T23:02:17Z
+
+// `count` trains of `route`, `everyMin` apart, each stopping at `platform`.
+function trips(route: string, platform: string, count: number, everyMin: number, from = AT + 60): FeedTrip[] {
+  return Array.from({ length: count }, (_, i) => {
+    const arrive = from + i * everyMin * 60
+    return { id: `${route}-${i}`, route, stops: [{ id: platform, arrive, depart: arrive + 30 }] }
+  })
+}
+
+function feed(id: string, list: FeedTrip[], timestamp = AT): TrainFeed {
+  return { feed: id, source: "recorded", timestamp, trips: list }
+}
+
+test("a line's service comes from the trains in its feed", () => {
+  const services = lineServices(
+    [
+      feed("nqrw", [...trips("R", "R22N", 7, 8), ...trips("N", "R20S", 2, 25)]),
+      feed("1234567", [...trips("6", "637S", 4, 5), ...trips("6X", "637S", 4, 5, AT + 150)]),
+    ],
+    AT,
+  )
+  const byId = new Map(services.map((s) => [s.id, s]))
+  assert.deepEqual(byId.get("R"), { id: "R", color: "#FCCC0A", status: "normal", headwayMin: 8, note: null })
+  // Fewer than every 15 minutes is a reduced service.
+  assert.equal(byId.get("N")?.status, "reduced")
+  assert.equal(byId.get("N")?.headwayMin, 25)
+  // A diamond express is its line's train: 6 and 6X together come every 2.5 min.
+  assert.equal(byId.get("6")?.status, "normal")
+  assert.ok(byId.get("6")!.headwayMin! <= 3)
+  // In a feed that arrived but carries no trip of it, a line does not run.
+  assert.equal(byId.get("W")?.status, "suspended")
+  assert.equal(byId.get("W")?.headwayMin, null)
+  // One train in the hour is not enough to tell how often they come.
+  assert.equal(lineServices([feed("l", trips("L", "L03N", 1, 5))], AT)[0]?.status, "reduced")
+  // The lines of a feed that did not arrive are left out, not guessed.
+  assert.ok(!byId.has("F") && !byId.has("A"))
+  // Arrivals already past, or more than an hour off, do not count.
+  assert.equal(lineServices([feed("l", trips("L", "L03N", 6, 5, AT - 3600))], AT)[0]?.status, "reduced")
+  // Every line follows LINES' order.
+  assert.deepEqual(
+    services.map((s) => s.id),
+    LINES.filter((id) => byId.has(id)),
+  )
+})
+
+test("docks count classic bikes and e-bikes apart, and nothing to rent where renting stopped", () => {
+  const snapshot: CitibikeSnapshot = {
+    updated: "2026-10-18T23:00:00.000Z",
+    docks: [
+      { id: "a", name: "A", lat: 40.72, lon: -74, capacity: 20, bikes: 9, ebikes: 4, docks: 11, renting: true },
+      { id: "b", name: "B", lat: 40.73, lon: -74, capacity: 10, bikes: 3, ebikes: 1, docks: 7, renting: false },
+    ],
+  }
+  assert.deepEqual(docksFrom(snapshot), [
+    { id: "a", name: "A", lat: 40.72, lon: -74, bikes: 5, ebikes: 4, freeDocks: 11 },
+    { id: "b", name: "B", lat: 40.73, lon: -74, bikes: 0, ebikes: 0, freeDocks: 7 },
+  ])
+})
+
+const FIXTURE_DOCKS = JSON.parse(readFileSync("public/fixtures/citibike.json", "utf8")) as CitibikeSnapshot
+
+test("recorded mode answers from the saved feed at the view's time", async () => {
+  const empty = mkdtempSync(join(tmpdir(), "nyc-live-no-recordings-"))
+  const provider = createRecordedProvider({
+    mta: createMtaSource({ recordings: empty, fixtures: FIXTURES_DIR }),
+    recordedDocks: () => FIXTURE_DOCKS,
+    now: () => Date.parse("2026-10-19T12:00:00Z"),
+  })
+  const state = await provider.get("2026-10-18T23:02:17Z")
+  assert.equal(state.source, "recorded")
+  assert.equal(state.time, "2026-10-18T23:02:17Z")
+  const r = state.lines.find((l) => l.id === "R")
+  assert.equal(r?.status, "normal")
+  assert.ok(r!.headwayMin! >= 2 && r!.headwayMin! <= 15, `R every ${r?.headwayMin} min`)
+  // The committed sample has no W trains: Sunday evening.
+  assert.equal(state.lines.find((l) => l.id === "W")?.status, "suspended")
+  assert.equal(state.docks.length, FIXTURE_DOCKS.docks.length)
+  // The same time is the same state.
+  assert.equal(await provider.get("2026-10-18T23:02:17Z"), state)
+  // Without a time, the latest recording from its own start, as the trains layer plays it.
+  assert.equal((await provider.get(null)).time, "2026-10-18T23:02:17Z")
+})
+
+test("live mode answers from the feeds now, and at once from the last state while a new one loads", async () => {
+  let clock = AT * 1000
+  let loads = 0
+  let failing = new Set<string>()
+  const mta: MtaSource = {
+    async live(id) {
+      loads++
+      if (failing.has(id)) throw new Error(`${id} down`)
+      return feed(id, id === "nqrw" ? trips("R", "R22N", 7, 8, clock / 1000 + 60) : [], clock / 1000)
+    },
+    recorded: () => null,
+  }
+  let bikesDown = false
+  const citibike = {
+    get: async () => {
+      if (bikesDown) throw new Error("GBFS down")
+      return FIXTURE_DOCKS
+    },
+  }
+  const warn = mock.method(console, "warn", () => {})
+  try {
+    const provider = createLiveProvider({ mta, citibike, now: () => clock })
+    const first = await provider.get(null)
+    assert.equal(first.source, "live")
+    assert.equal(first.time, "2026-10-18T23:02:17Z")
+    assert.equal(first.lines.find((l) => l.id === "R")?.headwayMin, 8)
+    assert.equal(first.docks.length, FIXTURE_DOCKS.docks.length)
+
+    // Within 15 s the same state answers, without asking the feeds again.
+    const asked = loads
+    clock += 10_000
+    assert.equal(await provider.get(null), first)
+    assert.equal(loads, asked)
+
+    // After 15 s the last state still answers at once, while a newer one loads.
+    failing = new Set(["bdfm"])
+    bikesDown = true
+    clock += 10_000
+    assert.equal(await provider.get(null), first)
+    await new Promise((resolve) => setImmediate(resolve))
+    const next = await provider.get(null)
+    assert.notEqual(next, first)
+    // A feed that fails leaves its lines out; docks that fail leave none; the rest answers.
+    assert.ok(!next.lines.some((l) => ["B", "D", "F", "M"].includes(l.id)))
+    assert.ok(next.lines.some((l) => l.id === "R"))
+    assert.deepEqual(next.docks, [])
+
+    // A state over two minutes old is not served: the question waits for a new one.
+    failing = new Set()
+    bikesDown = false
+    clock += 180_000
+    const fresh = await provider.get(null)
+    assert.equal(fresh.time, new Date(clock).toISOString().replace(/\.000Z$/, "Z"))
+    assert.equal(fresh.docks.length, FIXTURE_DOCKS.docks.length)
+  } finally {
+    warn.mock.restore()
+  }
+})
+
+async function serve(routes: Route[]) {
+  const middleware = routesMiddleware(routes)
+  const server = createServer((req, res) =>
+    middleware(req, res, () => {
+      res.statusCode = 404
+      res.end("not a route")
+    }),
+  )
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  const close = () =>
+    new Promise<void>((resolve) => {
+      server.closeAllConnections()
+      server.close(() => resolve())
+    })
+  return { base, close }
+}
+
+test("GET /api/city shows the state, and the ask panel says where its answers come from", async () => {
+  const recorded = createRecordedProvider({
+    mta: createMtaSource({ recordings: mkdtempSync(join(tmpdir(), "nyc-live-no-recordings-")), fixtures: FIXTURES_DIR }),
+    recordedDocks: () => FIXTURE_DOCKS,
+  })
+  const provider = (mode: string): CityStateProvider => (mode === "recorded" ? recorded : fixtureProvider)
+  const { base, close } = await serve([cityRoute(provider), ...createAskRoutes({ provider, apiKey: "" })])
+  try {
+    const t = "2026-10-18T23:02:17Z"
+    const state = (await (await fetch(`${base}/api/city?mode=recorded&t=${t}`)).json()) as { source: string; time: string }
+    assert.deepEqual([state.source, state.time], ["recorded", t])
+    assert.equal(((await (await fetch(`${base}/api/city`)).json()) as { source: string }).source, "fixture")
+    assert.equal((await fetch(`${base}/api/city?mode=live&t=soon`)).status, 400)
+    const options = (await (await fetch(`${base}/api/ask?mode=recorded&t=${t}`)).json()) as AskOptions
+    assert.deepEqual(options.state, { source: "recorded", time: t })
+  } finally {
+    await close()
+  }
+})
+
+test("the URL follows a gliding camera, not only once it settles", () => {
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 })
+  try {
+    const saved: number[] = []
+    const follow = followCamera(() => saved.push(Date.now()), 250)
+    // A fast pan, then damping: `change` every frame for 4 s after the finger lifts.
+    for (let t = 0; t <= 1000; t += 16) {
+      follow.moved()
+      mock.timers.tick(16)
+    }
+    follow.ended()
+    const lifted = Date.now()
+    assert.equal(saved.at(-1), lifted, "saved when the drag ends")
+    for (let t = 0; t <= 4000; t += 16) {
+      follow.moved()
+      mock.timers.tick(16)
+      // Never more than a quarter second behind the camera while it moves.
+      assert.ok(Date.now() - saved.at(-1)! <= 250 + 16, `${Date.now() - saved.at(-1)!} ms behind`)
+    }
+    const stopped = Date.now()
+    const before = saved.length
+    // Frame by frame, so a timer that fires reads the time it fired at.
+    for (let t = 0; t < 300; t += 16) mock.timers.tick(16)
+    // Once more after the last movement, then quiet.
+    assert.equal(saved.length, before + 1)
+    assert.ok(saved.at(-1)! - stopped <= 250 + 16)
+    mock.timers.tick(5000)
+    assert.equal(saved.length, before + 1)
+  } finally {
+    mock.timers.reset()
+  }
+})
+
+test("the see-through subway fades out as the camera comes down to the street", () => {
+  assert.equal(xrayFade(7.9), 0) // the Street level preset
+  assert.equal(xrayFade(40), 0)
+  assert.ok(xrayFade(120) > 0 && xrayFade(120) < 1)
+  assert.equal(xrayFade(370.8), 1) // the lowest other preset, Brooklyn Bridge
+})
+
+type PlanStep = string | { text: string; copy?: Array<{ text: string }> }
+type PlanFeature = { id: string; title: string; ticket: string; url: string; intro: string; steps: PlanStep[]; pass: string }
+
+test("the morning review plan opens a view for every feature a person can see", () => {
+  const plan = JSON.parse(readFileSync("plan/review-plan.json", "utf8")) as { title: string; features: PlanFeature[] }
+  assert.ok(plan.title.length > 0)
+  const ids = plan.features.map((f) => f.id)
+  assert.deepEqual(ids, ["stage", "buildings", "ground", "subway", "trains", "citibike", "ask", "camera", "review"])
+  assert.equal(new Set(ids).size, ids.length)
+  const links: string[] = []
+  for (const f of plan.features) {
+    for (const key of ["title", "ticket", "url", "intro", "pass"] as const) assert.ok(f[key]?.length > 0, `${f.id} has no ${key}`)
+    assert.ok(f.steps.length > 0, `${f.id} has no steps`)
+    links.push(f.url)
+    for (const step of f.steps) {
+      const text = typeof step === "string" ? step : step.text
+      for (const m of text.matchAll(/\]\(([^)\s]+)\)/g)) links.push(m[1]!)
+    }
+  }
+  // Opened on the app through any proxy: a path on the app's own origin, never a host.
+  for (const link of links) {
+    assert.match(link, /^\/#cam=/, link)
+    const view = parseViewState(link.slice(1))
+    assert.equal(serializeViewState(view), link.slice(1), `${link} is not a view the app writes back unchanged`)
+  }
+  assert.doesNotMatch(readFileSync("plan/review-plan.json", "utf8"), /localhost|127\.0\.0\.1|https?:\/\//)
+})
