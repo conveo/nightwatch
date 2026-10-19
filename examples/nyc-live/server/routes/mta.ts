@@ -121,12 +121,27 @@ export type MtaOptions = {
   fixtures?: string
 }
 
-export function createMtaRoute(options: MtaOptions = {}): Route {
+// Where the feeds come from, for the route and for the city state "ask the city"
+// answers from, so both share one cache and the MTA is asked once per CACHE_MS.
+export type MtaSource = {
+  // Live, fetched at most every CACHE_MS.
+  live(feed: string): Promise<TrainFeed>
+  // `t` (Unix seconds) from the recordings, or the committed sample when t is null;
+  // null when no snapshot has the feed.
+  recorded(feed: string, t: number | null): TrainFeed | null
+}
+
+export function createMtaSource(options: MtaOptions = {}): MtaSource {
   const { fetch: fetchImpl = fetch, now = Date.now, recordings = RECORDINGS_DIR, fixtures = FIXTURES_DIR } = options
   // Per feed: the request in flight or answered in the last CACHE_MS, and the last
   // good answer, served if the MTA cannot be reached (the HUD then shows its age).
   const cache = new Map<string, { at: number; feed: Promise<TrainFeed> }>()
   const lastGood = new Map<string, TrainFeed>()
+
+  function recorded(feed: string, t: number | null): TrainFeed | null {
+    const buffer = findSnapshot(t == null ? [fixtures] : [recordings, fixtures], feed, t ?? Infinity)
+    return buffer == null ? null : simplifyFeed(feed, t == null ? "fixture" : "recorded", buffer)
+  }
 
   function live(feed: string): Promise<TrainFeed> {
     const hit = cache.get(feed)
@@ -150,6 +165,11 @@ export function createMtaRoute(options: MtaOptions = {}): Route {
     return load
   }
 
+  return { live, recorded }
+}
+
+export function createMtaRoute(options: MtaOptions & { source?: MtaSource } = {}): Route {
+  const { live, recorded } = options.source ?? createMtaSource(options)
   return {
     method: "GET",
     path: "/api/mta/*",
@@ -160,11 +180,11 @@ export function createMtaRoute(options: MtaOptions = {}): Route {
       }
       const t = url.searchParams.get("t")
       if (url.searchParams.has("fixture") || t != null) {
-        const at = t == null ? Infinity : Date.parse(t) / 1000
+        const at = t == null ? null : Date.parse(t) / 1000
         if (Number.isNaN(at)) return sendJson(res, 400, { error: `t is not a time: "${t}"` })
-        const buffer = findSnapshot(t == null ? [fixtures] : [recordings, fixtures], feed, at)
-        if (buffer == null) return sendJson(res, 404, { error: `no snapshot of the ${feed} feed; run scripts/record-feeds.ts` })
-        return sendJson(res, 200, simplifyFeed(feed, t == null ? "fixture" : "recorded", buffer))
+        const data = recorded(feed, at)
+        if (data == null) return sendJson(res, 404, { error: `no snapshot of the ${feed} feed; run scripts/record-feeds.ts` })
+        return sendJson(res, 200, data)
       }
       try {
         sendJson(res, 200, await live(feed))
@@ -175,4 +195,7 @@ export function createMtaRoute(options: MtaOptions = {}): Route {
   }
 }
 
-export default createMtaRoute()
+// The one shared source: the route serves it, and the city state reads it too.
+export const mta = createMtaSource()
+
+export default createMtaRoute({ source: mta })

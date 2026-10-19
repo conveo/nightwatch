@@ -1,5 +1,5 @@
 {
-  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, seen from straight above. The subway lines are drawn as tubes 12 m below street level, in their official route colours, under a faint ground grid that stands in for the streets until the street layer is drawn. The venue is marked by a red pin on a red ring at the centre.",
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, seen from straight above, with the blocks of buildings around the venue. The subway lines are drawn as tubes 12 m below street level, in their official route colours, seen through the ground (and, fainter, through the buildings), under the street centrelines, which are drawn as faint white lines. The venue is marked by a red pin on a red ring at the centre, with a red '598 Broadway' label just above it.",
   "checks": [
     {
       "type": "predicate",

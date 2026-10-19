@@ -75,8 +75,11 @@ export function offset(point: Vec3, heading: number, forward: number, right: num
 export type PresetId = "venue" | "battery" | "brooklyn-bridge" | "above" | "street"
 export type Preset = { id: PresetId; label: string; view: CameraView }
 
-// Broadway runs a few degrees east of the street grid as it passes the venue.
-const BROADWAY_HEADING_DEG = 32
+// Broadway runs a few degrees east of the street grid as it passes the venue, and its
+// centreline is 40 m west of the venue's point (mid-block, on Broadway's east side):
+// both measured on the street centrelines in public/fixtures/ground.json.
+const BROADWAY_HEADING_DEG = 33
+const BROADWAY_OFFSET_M = -40
 
 export const PRESETS: readonly Preset[] = [
   // The view the app opens on.
@@ -108,13 +111,13 @@ export const PRESETS: readonly Preset[] = [
       }),
     ),
   },
-  // Eye height on Broadway, 300 m south of the venue, looking north at it. The
-  // venue's building is on the east side of Broadway, so the street is to its west.
+  // Eye height in the middle of Broadway, 300 m south of the venue, looking north up
+  // the street towards it.
   {
     id: "street",
     label: "Street level",
     view: roundView(
-      poseToView({ target: offset([0, 0, 0], BROADWAY_HEADING_DEG, -150, -25), distance: 150, pitch: 3, heading: BROADWAY_HEADING_DEG }),
+      poseToView({ target: offset([0, 0, 0], BROADWAY_HEADING_DEG, -150, BROADWAY_OFFSET_M), distance: 150, pitch: 3, heading: BROADWAY_HEADING_DEG }),
     ),
   },
 ]
@@ -161,6 +164,33 @@ export function interpolatePose(from: Pose, to: Pose, t: number): Pose {
     distance: d0 ** (1 - e) * d1 ** e * (1 + hop * Math.sin(Math.PI * e)),
     pitch: from.pitch + (to.pitch - from.pitch) * e,
     heading: normalizeDegrees(from.heading + turn(from.heading, to.heading) * e),
+  }
+}
+
+// How often the URL follows a moving camera.
+export const FOLLOW_MS = 250
+
+// Keeps the URL with a moving camera. Damping keeps the camera gliding for seconds
+// after a fast pan or a flick, so saving the view only once it settles would leave the
+// URL, and a review note sent meanwhile, on the previous view. Instead `save` runs at
+// most every `everyMs` while the camera moves, at once when a drag ends, and once more
+// `everyMs` after the last movement, so the URL is never more than `everyMs` behind.
+export function followCamera(save: () => void, everyMs = FOLLOW_MS, now: () => number = () => Date.now()): { moved(): void; ended(): void } {
+  let last = -Infinity
+  let trailing: ReturnType<typeof setTimeout> | undefined
+  const saveNow = (): void => {
+    clearTimeout(trailing)
+    trailing = undefined
+    last = now()
+    save()
+  }
+  return {
+    moved() {
+      if (now() - last >= everyMs) saveNow()
+      clearTimeout(trailing)
+      trailing = setTimeout(saveNow, everyMs)
+    },
+    ended: saveNow,
   }
 }
 

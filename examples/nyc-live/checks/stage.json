@@ -1,0 +1,36 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway (the red pin with the '598 Broadway' label), at night, seen from the Venue camera preset, in recorded mode (a saved MTA feed). The subway lines run 12 m below the streets as tubes in their official route colours, drawn partly see-through so they show through the buildings and the ground. Trains are short, thick blocks in their line's colour, lying on those lines. An 'Ask the city' panel at the top right answers a question about the city; the title and status text are at the top left.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "trains_under_venue",
+      "instructions": "At least one train, a short thick block in a subway line's colour lying along a coloured line, is visible within a few blocks of the red pin, and several coloured subway lines run below the streets around the pin.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "route_answer",
+      "instructions": "The panel at the top right answers a route question: it asks for the fastest way from 598 Broadway to a place and shows an answer naming a subway line, Citi Bike or walking, with a percentage.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "night",
+      "instructions": "The scene is lit for night: a dark sky and dark ground and buildings, with the streets and the subway lines bright against them.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "panels_apart",
+      "instructions": "The status text at the top left and the panel at the top right do not overlap: no text runs into or under the other panel.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "instructions": "How readable is the on-screen text when projected for an audience of 100 people?",
+      "levels": [{ "label": "poor" }, { "label": "acceptable" }, { "label": "good" }],
+      "minLevel": "acceptable"
+    }
+  ]
+}

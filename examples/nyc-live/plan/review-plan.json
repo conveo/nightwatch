@@ -1,0 +1,150 @@
+{
+  "title": "nyc-live · morning review",
+  "subtitle": "Lower Manhattan in 3D, built overnight. Each feature opens its own view: use the **Open** link, then the links in the steps. Every view is in the URL, so a note you send carries it. *Recorded* mode plays the MTA feed saved on Oct 18 at 7:02 PM ET; *live* mode needs the dev server to reach the MTA, Citi Bike and the Decisions API.",
+  "features": [
+    {
+      "id": "stage",
+      "title": "The stage view: trains under the venue, at night",
+      "badge": "VERIFY",
+      "ticket": "T8 · integration",
+      "tag": "instant",
+      "url": "/#cam=320,420,620&tgt=0,0,0&mode=recorded&t=2026-10-18T23:11:12Z&light=night&ask=route:brooklyn-bridge",
+      "intro": "Everything together on the Venue preset at night: buildings, streets, the subway with its trains, Citi Bike, and an answered question.",
+      "steps": [
+        "Open the view with the link above. The red **598 Broadway** pin and its ring are in the middle, lit for night, with the label just above the pin.",
+        "Coloured subway lines run below the streets around the pin, and short, thick blocks in line colours (trains) move along them: at this moment of the recording, two yellow trains and an orange one pass right by the venue. Lines show faintly through the buildings too.",
+        "The **Ask the city** panel shows *What is the fastest way from 598 Broadway to Brooklyn Bridge?*, an answer with a percentage, and **recorded** at its top right.",
+        "The status at the top left says the train positions *may not be real time* and stays clear of the panel."
+      ],
+      "pass": "Trains are visible under the venue, the panel answers the route question from the recorded feed, and the status line and the panel do not overlap."
+    },
+    {
+      "id": "buildings",
+      "title": "Buildings",
+      "badge": "VERIFY",
+      "ticket": "T1 · #9",
+      "tag": "instant",
+      "url": "/#cam=320,420,620&tgt=0,0,0&sel=bin:1007945&mode=fixture",
+      "intro": "Real footprints and roof heights from NYC Open Data, extruded and coloured by height.",
+      "steps": [
+        "Open the view. Dense blocks of buildings of different heights surround the pin, and the venue's own building is highlighted in yellow (`sel=bin:1007945` in the URL).",
+        "Click another building. It turns yellow instead, and the URL's `sel=` changes to that building's BIN.",
+        "Open [the whole area from the Battery](/#cam=-2297.9,750,3512.9&tgt=-1668.1,0,2376.8&mode=recorded&t=2026-10-18T23:02:17Z). Every building from the Battery to 17th Street draws within a few seconds."
+      ],
+      "pass": "Buildings stand at their real heights, one click selects one building, and the full area loads in under 5 s.",
+      "note": "The full area needs the downloaded data on the dev server (`node scripts/fetch-buildings.ts`). Without it the status line says *fixture only* and only the blocks around the venue draw."
+    },
+    {
+      "id": "ground",
+      "title": "Ground, water and streets",
+      "badge": "VERIFY",
+      "ticket": "T2 · #10",
+      "tag": "instant",
+      "url": "/#cam=0,3500,1&tgt=0,0,0&mode=fixture",
+      "intro": "Manhattan's shoreline from NYC Open Data, water around it, and the street centrelines.",
+      "steps": [
+        "Open the view, straight down with north at the top. Land fills the middle, with the Hudson on the left and the East River on the right.",
+        "Thin street lines form the blocks; there is no even square grid anywhere.",
+        "Open [the same view at night](/#cam=0,3500,1&tgt=0,0,0&mode=fixture&light=night). Land and water darken, and the streets stay bright."
+      ],
+      "pass": "Land is bordered by water on both sides, the street grid is real, and night keeps the streets readable."
+    },
+    {
+      "id": "subway",
+      "title": "Subway network",
+      "badge": "VERIFY",
+      "ticket": "T3 · #12",
+      "tag": "instant",
+      "url": "/#cam=0,1100,1&tgt=0,0,0&mode=fixture",
+      "intro": "Every line in the area from the MTA's static GTFS, as tubes 12 m below the street in its route colour, with stations.",
+      "steps": [
+        "Open the view, straight down on the venue. Lines in at least three colours run under the streets; the yellow N/Q/R/W passes right by the pin; small white markers are stations.",
+        "Click a line. It brightens, the others dim, and the URL gets `sel=route:…`. Click empty ground to clear it.",
+        "Open [the whole island from above at night](/#cam=74.4,3497.9,944.3&tgt=-32.4,0,885.1&mode=recorded&t=2026-10-18T23:02:17Z&light=night). Every line shows in its own colour across lower Manhattan."
+      ],
+      "pass": "The lines read in their colours from close and from high up, by day and at night, and a click selects one."
+    },
+    {
+      "id": "trains",
+      "title": "Trains",
+      "badge": "VERIFY",
+      "ticket": "T4 · #16",
+      "tag": "instant",
+      "url": "/#cam=150,1000,850&tgt=0,0,-100&mode=recorded&t=2026-10-18T23:02:10Z",
+      "intro": "Trains from the MTA's realtime feeds, placed on the lines from their predicted stop times and moving between stops.",
+      "steps": [
+        "Open the view. Short blocks in line colours sit on the subway lines and move slowly along them.",
+        "The status line says *MTA data from Oct 18, 7:02 PM ET: positions may not be real time*.",
+        "Open [the Venue in live mode](/#cam=320,420,620&tgt=0,0,0&mode=live). The trains are where the MTA says they are now, and the not-real-time notice is gone."
+      ],
+      "pass": "Trains move along their own lines, and old data is labelled as possibly not real time.",
+      "note": "The live step needs the dev server to reach the MTA's feeds. If it cannot, the status line names the feeds it is missing."
+    },
+    {
+      "id": "citibike",
+      "title": "Citi Bike",
+      "badge": "VERIFY",
+      "ticket": "T5 · #8",
+      "tag": "instant",
+      "url": "/#cam=320,420,620&tgt=0,0,0&mode=fixture&layers=ground,citibike,venue",
+      "intro": "One bar per dock, as tall as the bikes available, with e-bikes stacked on top in a second colour.",
+      "steps": [
+        "Open the view (only the ground, the docks and the pin). Bars of different heights stand at street corners around the pin, blue below and green on top.",
+        "Open [the live docks](/#cam=320,420,620&tgt=0,0,0&mode=live&layers=ground,citibike,venue). Around 235 docks stand across the area, and the status line gives the bikes available and the time of the data."
+      ],
+      "pass": "Docks stand at street corners and their heights change with the bikes available.",
+      "note": "The live step needs the dev server to reach the Citi Bike feed."
+    },
+    {
+      "id": "ask",
+      "title": "Ask the city",
+      "badge": "VERIFY",
+      "ticket": "T6 · #11, T8",
+      "tag": "live",
+      "url": "/#cam=320,420,620&tgt=0,0,0&mode=fixture&ask=route:brooklyn-bridge",
+      "intro": "Typed questions answered by the Decisions API from the city's state, with probabilities, and the answer highlighted in the scene.",
+      "steps": [
+        "Open the view. The panel on the right shows the Brooklyn Bridge question, its answer with a percentage, the other options, and **fixture data** at the top right.",
+        "In the panel choose **Fastest way to…** and **Union Square**, then press **Ask**. An answer appears within a second or two, its subway line lights up in the scene while the others dim, and the URL gets `sel=route:…`.",
+        "Choose **Is a line running normally?**, pick **F**, press **Ask**. The answer gives the probability that it is (the fixture has the F delayed).",
+        "Open [the same question in recorded mode](/#cam=320,420,620&tgt=0,0,0&mode=recorded&t=2026-10-18T23:02:17Z&ask=route:brooklyn-bridge). The panel says **recorded**: the answer now comes from the trains in the saved feed.",
+        "Open [the same question live](/#cam=320,420,620&tgt=0,0,0&mode=live&ask=route:brooklyn-bridge). The panel says **live**: the answer comes from the trains and Citi Bike docks right now."
+      ],
+      "pass": "Every question gets an answer with a percentage, the answer is highlighted in the scene, and recorded and live mode answer from their own data, not the fixture.",
+      "note": "Needs `OPENAI_API_KEY` in the dev server's environment. Without it the panel says the server has no key; mark this feature blocked."
+    },
+    {
+      "id": "camera",
+      "title": "Camera, labels and controls",
+      "badge": "VERIFY",
+      "ticket": "T7 · #13, T8",
+      "tag": "instant",
+      "url": "/#cam=320,420,620&tgt=0,0,0&mode=fixture",
+      "intro": "Five camera presets with a smooth flight, layer toggles, day and night, and place labels readable on a projector.",
+      "steps": [
+        "Open the view. The toolbar shows **Venue** highlighted; place labels such as *598 Broadway* and *SoHo* sit over the map without overlapping.",
+        "Press **Battery**, **Brooklyn Bridge**, **From above** and **Street level** in turn. The camera flies to each, and the pressed one is highlighted. Street level looks up the middle of Broadway.",
+        "Press **Night**, then **Day**. Turn **Buildings** off and on. Each change shows in the URL straight away.",
+        "Drag the map fast and let go. Within a quarter of a second the URL's `cam=` follows the camera while it still glides; open [the Venue again](/#cam=320,420,620&tgt=0,0,0&mode=fixture) to come back."
+      ],
+      "pass": "Every preset, toggle and the day/night switch works and is reflected in the URL, also while the camera is still moving.",
+      "note": "On a touch screen: one finger pans, two fingers rotate and zoom."
+    },
+    {
+      "id": "review",
+      "title": "Review notes from the app",
+      "badge": "VERIFY",
+      "ticket": "T9 · #14, T10 · #15",
+      "tag": "live",
+      "url": "/#cam=320,420,620&tgt=0,0,0&sel=bin:1007945&mode=fixture",
+      "intro": "This panel itself: a note pinned on the scene reaches the reviewer agent with a screenshot and the view's URL.",
+      "steps": [
+        "Open the view. Click **Add comment** in this panel and allow sharing this tab.",
+        "Click the venue's yellow building to drop a pin, write a short note and press **Send**.",
+        "The panel confirms the note was sent. The agent's copy carries this page's URL, whose hash is the view above, and a screenshot of the scene with the pin drawn on it."
+      ],
+      "pass": "The note arrives with the comment, the view's URL and a screenshot of the scene (not of this panel).",
+      "note": "If the screenshot shows this panel instead of the scene, say so in the note: it is a known timing issue of tab capture."
+    }
+  ]
+}

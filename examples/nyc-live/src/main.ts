@@ -12,19 +12,34 @@ import {
 import { MapControls } from "three/addons/controls/MapControls.js"
 import { mountAskPanel } from "./ask/panel.ts"
 import { createLayers } from "./layers/index.ts"
+import { followCamera } from "./ui/camera.ts"
 import { mountControls } from "./ui/controls.ts"
 import { parseViewState, serializeViewState, type Light, type Vec3, type ViewState } from "./view-state.ts"
 import "./style.css"
 
 declare global {
   interface Window {
-    // Read by scripts/shot.ts, which takes its screenshot once `ready` is true.
-    __nycLive?: { ready: boolean; layers: string[]; errors: string[]; view: ViewState }
+    // Read by scripts/shot.ts, which takes its screenshot once `ready` is true. `stats`
+    // reports the last frame's draw calls and triangles and the GPU objects held, for
+    // checking the cost of everything on at once without a GPU profiler.
+    __nycLive?: { ready: boolean; layers: string[]; errors: string[]; view: ViewState; stats(): Record<string, number> }
   }
 }
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene")!
 const status = document.querySelector<HTMLElement>("#status")!
+// On narrow screens the ask panel stands between the HUD and the toolbar (style.css),
+// whose edges move as the status line wraps, the toolbar fills in and the window resizes.
+const hud = document.querySelector<HTMLElement>("#hud")!
+const toolbar = document.querySelector<HTMLElement>("#controls")!
+function placeAskPanel(): void {
+  document.documentElement.style.setProperty("--hud-bottom", `${hud.getBoundingClientRect().bottom}px`)
+  document.documentElement.style.setProperty("--toolbar-top", `${toolbar.getBoundingClientRect().top}px`)
+}
+const panelEdges = new ResizeObserver(placeAskPanel)
+panelEdges.observe(hud)
+panelEdges.observe(toolbar)
+window.addEventListener("resize", placeAskPanel)
 
 const renderer = new WebGLRenderer({ canvas, antialias: true })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -38,7 +53,7 @@ scene.add(sky, sun)
 
 const LIGHTING: Record<Light, { background: number; sky: number; ground: number; skyI: number; sun: number; sunI: number }> = {
   day: { background: 0x0b1020, sky: 0xbfd4ff, ground: 0x1a1f2e, skyI: 1.2, sun: 0xffffff, sunI: 1.6 },
-  night: { background: 0x03050b, sky: 0x40507a, ground: 0x05070d, skyI: 0.5, sun: 0x9fb4ff, sunI: 0.35 },
+  night: { background: 0x03050b, sky: 0x5a6a9a, ground: 0x0a0d18, skyI: 0.8, sun: 0x9fb4ff, sunI: 0.5 },
 }
 
 function applyLighting(light: Light): void {
@@ -91,19 +106,20 @@ function setView(next: ViewState): void {
 
 applyView(view)
 for (const layer of layers) layer.select?.(view.sel)
-// Damping keeps the camera moving after the pointer is released ("end"), so save the
-// view once the movement has settled, not when the drag ends.
-let settle: ReturnType<typeof setTimeout> | undefined
-controls.addEventListener("change", () => {
-  clearTimeout(settle)
-  settle = setTimeout(captureCamera, 300)
-})
+// Damping keeps the camera moving for seconds after the pointer is released ("end"),
+// so the URL follows it while it glides, not only once it has settled.
+const follow = followCamera(captureCamera)
+controls.addEventListener("change", follow.moved)
+controls.addEventListener("end", follow.ended)
 // A hash that keeps the view's camera (the ask panel changing only the selection)
 // keeps the live camera too, rather than snapping back to the last saved position,
 // which lags a moving camera. The hash rounds positions to 0.1 m.
 const near = (a: Vec3, b: Vec3) => a.every((v, i) => Math.abs(v - b[i]!) < 0.06)
 window.addEventListener("hashchange", () => {
   const next = parseViewState(location.hash)
+  // Layers load their data once, for one mode and time: a link to another (a review
+  // plan's step, an edited URL) loads the page again.
+  if (next.mode !== view.mode || next.t !== view.t) return location.reload()
   const keepCamera = near(next.cam, view.cam) && near(next.tgt, view.tgt)
   applyView(keepCamera ? { ...next, cam: camera.position.toArray(), tgt: controls.target.toArray() } : next)
 })
@@ -155,8 +171,14 @@ renderer.setAnimationLoop((now) => {
 const results = await Promise.allSettled(layers.map((layer) => layer.init({ mode: view.mode, time: view.t })))
 const errors = results.flatMap((r, i) => (r.status === "rejected" ? [`${layers[i]!.id}: ${String(r.reason)}`] : []))
 // Live layers refresh their data, so the status line is read again every few seconds.
+// The streets and the venue pin speak for themselves on screen, so the line keeps to
+// what loads and changes, short enough to read from the back of a room.
+const QUIET_LAYERS = new Set(["ground", "venue"])
 function renderStatus(): void {
-  const summaries = layers.map((l) => l.summary?.()).filter((s): s is string => s != null && s !== "")
+  const summaries = layers
+    .filter((l) => !QUIET_LAYERS.has(l.id))
+    .map((l) => l.summary?.())
+    .filter((s): s is string => s != null && s !== "")
   status.textContent = [...summaries, ...errors.map((e) => `failed: ${e}`)].join(" · ") || "ready"
 }
 renderStatus()
@@ -168,6 +190,12 @@ await askSettled
 // Two frames after the last layer loads, everything is on screen.
 requestAnimationFrame(() =>
   requestAnimationFrame(() => {
-    window.__nycLive = { ready: true, layers: layers.map((l) => l.id), errors, view }
+    window.__nycLive = {
+      ready: true,
+      layers: layers.map((l) => l.id),
+      errors,
+      view,
+      stats: () => ({ ...renderer.info.render, ...renderer.info.memory }),
+    }
   }),
 )

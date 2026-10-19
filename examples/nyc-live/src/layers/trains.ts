@@ -11,7 +11,7 @@ import {
   Vector3,
 } from "three"
 import { SUBWAY_DEPTH_M } from "../constants.ts"
-import { loadSubwayData, pointAlong, stationId, toPath, type Path, type SubwayData, type SubwayShape } from "./subway.ts"
+import { loadSubwayData, pointAlong, seeThrough, stationId, toPath, type Path, type SubwayData, type SubwayShape } from "./subway.ts"
 import type { Layer, LayerContext } from "./types.ts"
 
 // Live train positions from the MTA's realtime feeds, moving along the subway lines.
@@ -218,6 +218,10 @@ export function trainsSummary(count: number, dataTime: number | null, nowMs: num
   return parts.join(" · ")
 }
 
+// The see-through copy of the blocks (see seeThrough in subway.ts): trains are what
+// moves, so they show clearly through the ground and the buildings.
+export const TRAINS_XRAY_OPACITY = 0.85
+
 // About a two-car length, and wider and taller than the subway's tube, so a block
 // stands out of the line it runs on.
 const BLOCK = { width: 14, height: 13, length: 70 }
@@ -277,6 +281,18 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
   // The blocks move every frame; their bounds would always be stale.
   mesh.frustumCulled = false
   group.add(mesh)
+  // The same blocks again, see-through and over the buildings and the ground, so a
+  // train under them still shows; after the subway's own see-through tubes (0.5) and
+  // before the streets (1). They share the blocks' positions and colours.
+  mesh.setColorAt(0, WHITE)
+  const xray = seeThrough(new InstancedMesh(mesh.geometry, new MeshBasicMaterial({ depthTest: false }), MAX_TRAINS), TRAINS_XRAY_OPACITY)
+  xray.name = "train-blocks-xray"
+  xray.instanceMatrix = mesh.instanceMatrix
+  xray.instanceColor = mesh.instanceColor
+  xray.count = 0
+  xray.frustumCulled = false
+  xray.renderOrder = 0.75
+  mesh.add(xray)
   let loaded = false
   let drawn = 0
   // The scene's clock in fixture and recorded mode: Unix seconds `t` at performance
@@ -357,6 +373,7 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       drawn++
     }
     mesh.count = drawn
+    xray.count = drawn
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor != null) mesh.instanceColor.needsUpdate = true
   }

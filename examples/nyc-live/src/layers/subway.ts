@@ -7,6 +7,7 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   type Raycaster,
 } from "three"
@@ -259,6 +260,33 @@ function unit(a: Local, b: Local): Local {
   return len > 0 ? { x: (b.x - a.x) / len, z: (b.z - a.z) / len } : { x: 0, z: -1 }
 }
 
+// The subway is drawn again, see-through, so it reads from above and at night too: the
+// tubes and stations through the ground (the ground does not hide what is drawn after
+// it), and the tubes once more, fainter, through the buildings. The trains layer does
+// the same with its trains, clearly through both.
+export const SUBWAY_XRAY_OPACITY = 0.35
+export const SUBWAY_GHOST_OPACITY = 0.14
+const STATION_XRAY_OPACITY = 0.9
+
+// From near the street the see-through subway would paint over the view, so it fades
+// out as the camera comes down: gone at 40 m, full from 200 m up.
+export function xrayFade(cameraHeightM: number): number {
+  return Math.min(Math.max((cameraHeightM - 40) / 160, 0), 1)
+}
+
+// Makes `mesh` a see-through copy: blended, never hiding anything behind it, and
+// faded out as the camera nears the street (xrayFade). Its opacity before the fade is
+// userData.opacity.
+export function seeThrough<T extends Mesh<BufferGeometry, MeshBasicMaterial>>(mesh: T, opacity: number): T {
+  mesh.material.transparent = true
+  mesh.material.depthWrite = false
+  mesh.userData.opacity = opacity
+  mesh.onBeforeRender = (_renderer, _scene, camera) => {
+    mesh.material.opacity = (mesh.userData.opacity as number) * xrayFade(camera.position.y)
+  }
+  return mesh
+}
+
 const STATION_RADIUS_M = 10
 const STATION_HEIGHT_M = 10
 const STATION_COLOR = 0xf4f6fb
@@ -298,6 +326,17 @@ export function createSubwayLayer(load: (ctx: LayerContext) => Promise<SubwayDat
         )
         mesh.name = `route:${route.id}`
         mesh.userData = { route: route.id }
+        // The same tube again, see-through and drawn after the ground (0), which does
+        // not hide it, and before the streets (1), which still cross over it; and once
+        // more, fainter, through the buildings too. Children, so toggles follow them
+        // and picking ignores them.
+        const xray = seeThrough(new Mesh(mesh.geometry, new MeshBasicMaterial({ color: route.color })), SUBWAY_XRAY_OPACITY)
+        xray.name = `xray:${route.id}`
+        xray.renderOrder = 0.5
+        const ghost = seeThrough(new Mesh(mesh.geometry, new MeshBasicMaterial({ color: route.color, depthTest: false })), SUBWAY_GHOST_OPACITY)
+        ghost.name = `ghost:${route.id}`
+        ghost.renderOrder = 0.5
+        mesh.add(xray, ghost)
         lines.set(route.id, mesh)
         group.add(mesh)
         // The diamond expresses (6X, 7X, FX) are the same line on a map.
@@ -320,6 +359,14 @@ export function createSubwayLayer(load: (ctx: LayerContext) => Promise<SubwayDat
         stations!.setColorAt(i, new Color(STATION_COLOR))
       })
       group.add(stations)
+      // The markers through the ground too, over the tubes, sharing their positions.
+      const markers = seeThrough(new InstancedMesh(stations.geometry, new MeshBasicMaterial(), stations.count), STATION_XRAY_OPACITY)
+      markers.instanceMatrix = stations.instanceMatrix
+      markers.instanceColor = stations.instanceColor
+      markers.renderOrder = 0.6
+      // A selected marker grows; the shared matrices would outgrow cached bounds.
+      markers.frustumCulled = false
+      stations.add(markers)
     },
     summary() {
       if (lines.size === 0) return null
@@ -342,6 +389,10 @@ export function createSubwayLayer(load: (ctx: LayerContext) => Promise<SubwayDat
         mesh.material.opacity = dim ? 0.2 : 1
         mesh.material.emissiveIntensity = highlight && rid === route ? 0.9 : 0.45
         mesh.material.needsUpdate = true
+        const [xray, ghost] = mesh.children
+        const factor = dim ? 0.3 : highlight ? 2 : 1
+        xray!.userData.opacity = Math.min(SUBWAY_XRAY_OPACITY * factor, 1)
+        ghost!.userData.opacity = Math.min(SUBWAY_GHOST_OPACITY * factor, 1)
       }
       if (stations != null) {
         const stop = id?.startsWith("stop:") ? id.slice("stop:".length) : null
