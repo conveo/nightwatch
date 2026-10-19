@@ -66,15 +66,17 @@ body {
   font-size: 24px;
 }
 
-/* Narrower screens have no room for both side by side: the ask panel goes under the
-   HUD, whose bottom edge main.ts keeps in --hud-bottom. */
+/* Narrower screens have no room for both side by side: the ask panel goes between the
+   HUD and the toolbar, whose edges main.ts keeps in --hud-bottom and --toolbar-top. */
 @media (max-width: 1100px) {
   #hud {
     max-width: calc(100vw - 32px);
   }
 
-  #ask {
+  /* With the class, as src/ask/panel.css sets the height limit; this file loads later. */
+  #ask.ask-panel {
     top: calc(var(--hud-bottom, 120px) + 12px);
+    max-height: calc(var(--toolbar-top, 100vh) - var(--hud-bottom, 120px) - 24px);
   }
 }
 
