@@ -12,8 +12,10 @@ import {
 import { MapControls } from "three/addons/controls/MapControls.js"
 import { mountAskPanel } from "./ask/panel.ts"
 import { createLayers } from "./layers/index.ts"
+import { playbackTime } from "./layers/trains.ts"
 import { followCamera } from "./ui/camera.ts"
 import { mountControls } from "./ui/controls.ts"
+import { statusLine } from "./ui/layers.ts"
 import { parseViewState, serializeViewState, type Light, type Vec3, type ViewState } from "./view-state.ts"
 import "./style.css"
 
@@ -170,19 +172,28 @@ renderer.setAnimationLoop((now) => {
 // A layer that fails to load is reported, not fatal: the rest of the city still draws.
 const results = await Promise.allSettled(layers.map((layer) => layer.init({ mode: view.mode, time: view.t })))
 const errors = results.flatMap((r, i) => (r.status === "rejected" ? [`${layers[i]!.id}: ${String(r.reason)}`] : []))
-// Live layers refresh their data, so the status line is read again every few seconds.
-// The streets and the venue pin speak for themselves on screen, so the line keeps to
-// what loads and changes, short enough to read from the back of a room.
+// Live layers refresh their data, so the status line is read again every few seconds,
+// and a layer that failed to start but draws after a retry leaves the failures. The
+// streets and the venue pin speak for themselves on screen, so the line keeps to what
+// loads and changes, short enough to read from the back of a room.
 const QUIET_LAYERS = new Set(["ground", "venue"])
+const failures = new Map(results.flatMap((r, i): Array<[string, string]> => (r.status === "rejected" ? [[layers[i]!.id, String(r.reason)]] : [])))
 function renderStatus(): void {
-  const summaries = layers
-    .filter((l) => !QUIET_LAYERS.has(l.id))
-    .map((l) => l.summary?.())
-    .filter((s): s is string => s != null && s !== "")
-  status.textContent = [...summaries, ...errors.map((e) => `failed: ${e}`)].join(" · ") || "ready"
+  status.textContent = statusLine(layers, failures, QUIET_LAYERS)
 }
 renderStatus()
 setInterval(renderStatus, 5_000)
+// Recorded mode plays the feed on from `t`, so the URL's `t` follows the moment on
+// screen: the ask panel asks about it, and a review note reopens it. replaceState does
+// not fire hashchange, so this never reloads the page the way a link to another time does.
+if (view.mode === "recorded") {
+  setInterval(() => {
+    const t = layers.map((l) => playbackTime(l)).find((p) => p != null)
+    if (t == null || t === view.t) return
+    view = { ...view, t }
+    writeUrl()
+  }, 1_000)
+}
 for (const layer of layers) layer.select?.(view.sel)
 // A question in the URL is part of the view: report ready once its answer shows.
 await askSettled

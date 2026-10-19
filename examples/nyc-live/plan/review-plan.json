@@ -73,7 +73,7 @@
       "url": "/#cam=150,1000,850&tgt=0,0,-100&mode=recorded&t=2026-10-18T23:02:10Z",
       "intro": "Trains from the MTA's realtime feeds, placed on the lines from their predicted stop times and moving between stops.",
       "steps": [
-        "Open the view. Short blocks in line colours sit on the subway lines and move slowly along them.",
+        "Open the view. Short blocks in line colours sit on the subway lines and move slowly along them, and the URL's `t=` moves on with them, so a note reopens the moment you saw.",
         "The status line says *MTA data from Oct 18, 7:02 PM ET: positions may not be real time*.",
         "Open [the Venue in live mode](/#cam=320,420,620&tgt=0,0,0&mode=live). The trains are where the MTA says they are now, and the not-real-time notice is gone."
       ],

@@ -394,7 +394,7 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       .finally(() => (refreshing = false))
   }
 
-  return {
+  const layer: Layer = {
     id: "trains",
     group,
     async init(context) {
@@ -424,6 +424,19 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
       return trainsSummary(drawn, dataTime(), now(), failed)
     },
   }
+  playback.set(layer, (perfNow) => (ctx.mode === "recorded" ? clock(perfNow) : null))
+  return layer
+}
+
+// Each trains layer's clock in recorded mode, read through playbackTime().
+const playback = new WeakMap<Layer, (perfNow: number) => number | null>()
+
+// The moment recorded mode is playing (ISO 8601, whole seconds), or null in other modes
+// and until the first feed arrives. main.ts keeps the URL's `t` on it, so the ask panel
+// asks about the moment on screen and a review note reopens it.
+export function playbackTime(layer: Layer, perfNow = performance.now()): string | null {
+  const t = playback.get(layer)?.(perfNow)
+  return t == null ? null : new Date(Math.floor(t) * 1000).toISOString().replace(/\.000Z$/, "Z")
 }
 
 const WHITE = new Color(0xffffff)
