@@ -10,7 +10,7 @@ import {
   SRGBColorSpace,
   Vector3,
 } from "three"
-import { SUBWAY_DEPTH_M, TRAINS_XRAY_OPACITY } from "../constants.ts"
+import { SUBWAY_DEPTH_M } from "../constants.ts"
 import { loadSubwayData, pointAlong, seeThrough, stationId, toPath, type Path, type SubwayData, type SubwayShape } from "./subway.ts"
 import type { Layer, LayerContext } from "./types.ts"
 
@@ -217,6 +217,10 @@ export function trainsSummary(count: number, dataTime: number | null, nowMs: num
   if (failed.length > 0) parts.push(`no train data for ${failed.join(", ")}`)
   return parts.join(" · ")
 }
+
+// The see-through copy of the blocks (see seeThrough in subway.ts): trains are what
+// moves, so they show clearly through the ground and the buildings.
+export const TRAINS_XRAY_OPACITY = 0.85
 
 // About a two-car length, and wider and taller than the subway's tube, so a block
 // stands out of the line it runs on.

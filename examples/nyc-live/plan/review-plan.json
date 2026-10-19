@@ -8,11 +8,11 @@
       "badge": "VERIFY",
       "ticket": "T8 · integration",
       "tag": "instant",
-      "url": "/#cam=320,420,620&tgt=0,0,0&mode=recorded&t=2026-10-18T23:02:17Z&light=night&ask=route:brooklyn-bridge",
+      "url": "/#cam=320,420,620&tgt=0,0,0&mode=recorded&t=2026-10-18T23:11:12Z&light=night&ask=route:brooklyn-bridge",
       "intro": "Everything together on the Venue preset at night: buildings, streets, the subway with its trains, Citi Bike, and an answered question.",
       "steps": [
-        "Open the view with the link above. The red **598 Broadway** pin is in the middle, lit for night.",
-        "Coloured subway lines run below the streets around the pin, and short, thick blocks in line colours (trains) move along them. Lines show faintly through the buildings too.",
+        "Open the view with the link above. The red **598 Broadway** pin and its ring are in the middle, lit for night, with the label just above the pin.",
+        "Coloured subway lines run below the streets around the pin, and short, thick blocks in line colours (trains) move along them: at this moment of the recording, two yellow trains and an orange one pass right by the venue. Lines show faintly through the buildings too.",
         "The **Ask the city** panel shows *What is the fastest way from 598 Broadway to Brooklyn Bridge?*, an answer with a percentage, and **recorded** at its top right.",
         "The status at the top left says the train positions *may not be real time* and stays clear of the panel."
       ],

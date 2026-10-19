@@ -3,7 +3,7 @@ import type { MapControls } from "three/addons/controls/MapControls.js"
 import type { Layer } from "../layers/types.ts"
 import type { Light, ViewState } from "../view-state.ts"
 import { activePreset, flightMs, interpolatePose, poseToView, PRESETS, viewToPose, type CameraView, type Preset } from "./camera.ts"
-import { PLACES, placeLabels, type LabelBox, type Place, type Rect } from "./labels.ts"
+import { PLACES, placeLabels, venueMarkerTop, type LabelBox, type Place, type Rect } from "./labels.ts"
 import { isLayerShown, layerName, toggleLayer } from "./layers.ts"
 import "./controls.css"
 
@@ -20,7 +20,7 @@ export type ControlsContext = {
 // scene out between 2,500 and 6,000 m).
 const MAX_LABEL_DISTANCE_M = 5000
 
-// The venue's label stands on its pin with a pointer this tall (see controls.css).
+// The venue's label stands on its marker with a pointer this tall (see controls.css).
 const VENUE_POINTER_PX = 12
 
 // On-screen panels that labels must not cover.
@@ -173,8 +173,9 @@ export function mountControls(root: HTMLElement, ctx: ControlsContext): void {
       if (point.z < -1 || point.z > 1) continue
       const x = ((point.x + 1) / 2) * width
       const y = ((1 - point.y) / 2) * height
-      // The venue's label stands on its pin; the others are centred on their place.
-      const top = l.place.kind === "venue" ? y - l.height - VENUE_POINTER_PX : y - l.height / 2
+      // The venue's label stands on top of its marker, above the pin's head and its
+      // ring however the camera looks; the others are centred on their place.
+      const top = l.place.kind === "venue" ? (venueMarkerTop(camera, height) ?? y) - l.height - VENUE_POINTER_PX : y - l.height / 2
       boxes.push({ id: l.place.id, left: x - l.width / 2, top, width: l.width, height: l.height })
     }
     const kept = new Set(placeLabels(boxes, { width, height }, blockedRects()))

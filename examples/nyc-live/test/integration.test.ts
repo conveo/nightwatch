@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { mock, test } from "node:test"
+import { Mesh, PerspectiveCamera, Vector3, type MeshBasicMaterial } from "three"
 import { routesMiddleware, type Route } from "../server/api.ts"
 import { fixtureProvider, type CityStateProvider } from "../server/city-state.ts"
 import { createAskRoutes } from "../server/routes/ask.ts"
@@ -20,9 +21,11 @@ import {
 } from "../server/routes/city.ts"
 import { createMtaSource, FIXTURES_DIR, type MtaSource } from "../server/routes/mta.ts"
 import type { AskOptions } from "../src/ask/types.ts"
-import { xrayFade } from "../src/constants.ts"
+import { xrayFade } from "../src/layers/subway.ts"
+import { createVenueLayer } from "../src/layers/venue.ts"
 import type { FeedTrip, TrainFeed } from "../src/layers/trains.ts"
-import { followCamera } from "../src/ui/camera.ts"
+import { followCamera, PRESETS } from "../src/ui/camera.ts"
+import { VENUE_MARKER, venueMarkerTop } from "../src/ui/labels.ts"
 import { parseViewState, serializeViewState } from "../src/view-state.ts"
 
 // How the tickets' pieces work together (T8 in plan/PLAN.md): the city state "ask the
@@ -250,6 +253,45 @@ test("the see-through subway fades out as the camera comes down to the street", 
   assert.equal(xrayFade(370.8), 1) // the lowest other preset, Brooklyn Bridge
 })
 
+// A 1600x900 screen looking at a preset's view.
+function cameraAt(cam: number[], tgt: number[]): PerspectiveCamera {
+  const camera = new PerspectiveCamera(45, 1600 / 900, 1, 20000)
+  camera.position.set(cam[0]!, cam[1]!, cam[2]!)
+  camera.lookAt(new Vector3(tgt[0]!, tgt[1]!, tgt[2]!))
+  camera.updateMatrixWorld()
+  return camera
+}
+
+const screenY = (camera: PerspectiveCamera, p: readonly number[]) => ((1 - new Vector3(p[0], p[1], p[2]).project(camera).y) / 2) * 900
+
+test("the venue's label stands above its pin and ring from any angle, straight down included", () => {
+  const ring = VENUE_MARKER.slice(1)
+  const views = [{ cam: [0, 1100, 1], tgt: [0, 0, 0] }, ...PRESETS.map((p) => p.view)]
+  for (const { cam, tgt } of views) {
+    const camera = cameraAt(cam, tgt)
+    const top = venueMarkerTop(camera, 900)
+    assert.ok(top != null, `${cam}: the marker is in view`)
+    assert.ok(top <= screenY(camera, [0, 80, 0]) && ring.every((p) => top <= screenY(camera, p)), `${cam}: the label clears the marker`)
+  }
+  // From straight above the ring reaches higher on screen than the pin's head, so a
+  // label standing on the head would cover the ring.
+  const above = cameraAt([0, 1100, 1], [0, 0, 0])
+  assert.ok(venueMarkerTop(above, 900)! < screenY(above, [0, 80, 0]) - 10)
+})
+
+test("the venue's pin and ring show through the buildings, over the see-through subway", async () => {
+  const layer = createVenueLayer()
+  await layer.init({ mode: "fixture", time: null })
+  const marks = layer.group.children as Mesh[]
+  assert.equal(marks.length, 2)
+  for (const mark of marks) {
+    const xray = mark.children[0] as Mesh
+    const material = xray.material as MeshBasicMaterial
+    assert.ok(xray.geometry === mark.geometry && !material.depthTest && !material.depthWrite && material.opacity < 1)
+    assert.ok(xray.renderOrder > 1, "drawn after the see-through subway and the streets")
+  }
+})
+
 type PlanStep = string | { text: string; copy?: Array<{ text: string }> }
 type PlanFeature = { id: string; title: string; ticket: string; url: string; intro: string; steps: PlanStep[]; pass: string }
 
@@ -279,7 +321,7 @@ test("the morning review plan opens a view for every feature a person can see", 
 })
 
 // test/fixtures/stage.png is the stage view (the Venue preset at night in recorded
-// mode, with the route question asked: the plan's first feature), and test/recordings/
+// mode at 23:11:12Z, with the route question asked: the plan's first feature), and test/recordings/
 // holds the Decisions API's real answers for it.
 test("the recorded stage screenshot passes its checks: trains under the venue, a route answered", () => {
   const env = { ...process.env }

@@ -1,3 +1,4 @@
+import { Vector3, type Camera } from "three"
 import type { Vec3 } from "../view-state.ts"
 import { at } from "./camera.ts"
 
@@ -40,6 +41,33 @@ export const PLACES: readonly Place[] = [
   neighbourhood("gramercy", "Gramercy", 40.7368, -73.9845),
   neighbourhood("dumbo", "DUMBO", 40.7033, -73.9881),
 ]
+
+// The venue's marker (layers/venue.ts): the head of its 80 m pin and the 20 m ring at
+// its foot. Its label stands above all of it on screen, so from any angle, straight
+// down included, the label covers neither the pin nor the ring.
+const RING_RADIUS_M = 20
+export const VENUE_MARKER: readonly Vec3[] = [
+  [0, 80, 0],
+  ...Array.from({ length: 8 }, (_, i): Vec3 => {
+    const a = (i * Math.PI) / 4
+    return [RING_RADIUS_M * Math.cos(a), 0.5, RING_RADIUS_M * Math.sin(a)]
+  }),
+]
+
+const marker = new Vector3()
+
+// How far down the screen (px) the venue's marker reaches its highest point, for a
+// screen `height` px tall; null when none of it is in front of the camera.
+export function venueMarkerTop(camera: Camera, height: number): number | null {
+  let top: number | null = null
+  for (const p of VENUE_MARKER) {
+    marker.set(...p).project(camera)
+    if (marker.z < -1 || marker.z > 1) continue
+    const y = ((1 - marker.y) / 2) * height
+    top = top == null ? y : Math.min(top, y)
+  }
+  return top
+}
 
 export type Rect = { left: number; top: number; width: number; height: number }
 export type LabelBox = Rect & { id: string }

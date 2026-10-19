@@ -11,7 +11,7 @@ import {
   MeshStandardMaterial,
   type Raycaster,
 } from "three"
-import { SUBWAY_DEPTH_M, SUBWAY_GHOST_OPACITY, SUBWAY_XRAY_OPACITY, xrayFade, type AREA } from "../constants.ts"
+import { SUBWAY_DEPTH_M, type AREA } from "../constants.ts"
 import { toLocal, type Local } from "../geo.ts"
 import type { Layer, LayerContext } from "./types.ts"
 
@@ -260,6 +260,20 @@ function unit(a: Local, b: Local): Local {
   return len > 0 ? { x: (b.x - a.x) / len, z: (b.z - a.z) / len } : { x: 0, z: -1 }
 }
 
+// The subway is drawn again, see-through, so it reads from above and at night too: the
+// tubes and stations through the ground (the ground does not hide what is drawn after
+// it), and the tubes once more, fainter, through the buildings. The trains layer does
+// the same with its trains, clearly through both.
+export const SUBWAY_XRAY_OPACITY = 0.35
+export const SUBWAY_GHOST_OPACITY = 0.14
+const STATION_XRAY_OPACITY = 0.9
+
+// From near the street the see-through subway would paint over the view, so it fades
+// out as the camera comes down: gone at 40 m, full from 200 m up.
+export function xrayFade(cameraHeightM: number): number {
+  return Math.min(Math.max((cameraHeightM - 40) / 160, 0), 1)
+}
+
 // Makes `mesh` a see-through copy: blended, never hiding anything behind it, and
 // faded out as the camera nears the street (xrayFade). Its opacity before the fade is
 // userData.opacity.
@@ -273,7 +287,6 @@ export function seeThrough<T extends Mesh<BufferGeometry, MeshBasicMaterial>>(me
   return mesh
 }
 
-const STATION_XRAY_OPACITY = 0.9
 const STATION_RADIUS_M = 10
 const STATION_HEIGHT_M = 10
 const STATION_COLOR = 0xf4f6fb

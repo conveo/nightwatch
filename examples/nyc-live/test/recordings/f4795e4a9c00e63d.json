@@ -4,17 +4,17 @@
     {
       "type": "predicate",
       "name": "lines_under_streets",
-      "probability": 0.9
+      "probability": 0.99
     },
     {
       "type": "predicate",
       "name": "yellow_line_by_pin",
-      "probability": 0.94
+      "probability": 0.82
     },
     {
       "type": "predicate",
       "name": "station_markers",
-      "probability": 1
+      "probability": 0.96
     }
   ]
 }
