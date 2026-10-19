@@ -32,17 +32,12 @@ body {
   top: 16px;
   left: 16px;
   padding: 12px 16px;
-  /* Clear of the ask panel at the top right: the status line wraps instead. */
-  max-width: min(1040px, calc(100vw - 484px));
+  /* Clear of the ask panel at the top right (480px, src/ask/panel.css): the status
+     line wraps instead. */
+  max-width: min(1040px, calc(100vw - 544px));
   border-radius: 10px;
   background: var(--panel);
   pointer-events: none;
-}
-
-@media (max-width: 900px) {
-  #hud {
-    max-width: calc(100vw - 32px);
-  }
 }
 
 #hud h1 {
@@ -69,6 +64,18 @@ body {
   border-radius: 10px;
   background: var(--panel);
   font-size: 24px;
+}
+
+/* Narrower screens have no room for both side by side: the ask panel goes under the
+   HUD, whose bottom edge main.ts keeps in --hud-bottom. */
+@media (max-width: 1100px) {
+  #hud {
+    max-width: calc(100vw - 32px);
+  }
+
+  #ask {
+    top: calc(var(--hud-bottom, 120px) + 12px);
+  }
 }
 
 /* Bottom left: the reviewer overlay's button sits bottom right. */

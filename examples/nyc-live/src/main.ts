@@ -28,6 +28,10 @@ declare global {
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene")!
 const status = document.querySelector<HTMLElement>("#status")!
+// On narrow screens the ask panel stands under the HUD (style.css), which grows as the
+// status line fills in and wraps.
+const hud = document.querySelector<HTMLElement>("#hud")!
+new ResizeObserver(() => document.documentElement.style.setProperty("--hud-bottom", `${hud.getBoundingClientRect().bottom}px`)).observe(hud)
 
 const renderer = new WebGLRenderer({ canvas, antialias: true })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))

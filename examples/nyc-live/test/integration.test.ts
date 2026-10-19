@@ -65,12 +65,21 @@ test("a line's service comes from the trains in its feed", () => {
   // In a feed that arrived but carries no trip of it, a line does not run.
   assert.equal(byId.get("W")?.status, "suspended")
   assert.equal(byId.get("W")?.headwayMin, null)
-  // One train in the hour is not enough to tell how often they come.
-  assert.equal(lineServices([feed("l", trips("L", "L03N", 1, 5))], AT)[0]?.status, "reduced")
+  // A single train in the hour is a train an hour, not none.
+  assert.deepEqual(lineServices([feed("l", trips("L", "L03N", 1, 5))], AT)[0], {
+    id: "L",
+    color: "#A7A9AC",
+    status: "reduced",
+    headwayMin: 60,
+    note: "only one train due in the next hour",
+  })
   // The lines of a feed that did not arrive are left out, not guessed.
   assert.ok(!byId.has("F") && !byId.has("A"))
-  // Arrivals already past, or more than an hour off, do not count.
-  assert.equal(lineServices([feed("l", trips("L", "L03N", 6, 5, AT - 3600))], AT)[0]?.status, "reduced")
+  // Arrivals already past, or more than an hour off, do not count: no train is due.
+  for (const from of [AT - 3600, AT + 3700]) {
+    const [l] = lineServices([feed("l", trips("L", "L03N", 6, 5, from))], AT)
+    assert.deepEqual([l?.status, l?.headwayMin], ["suspended", null])
+  }
   // Every line follows LINES' order.
   assert.deepEqual(
     services.map((s) => s.id),
@@ -120,19 +129,23 @@ test("live mode answers from the feeds now, and at once from the last state whil
   let clock = AT * 1000
   let loads = 0
   let failing = new Set<string>()
+  // A feed down behind the shared source's cache: it serves its last good data, from then.
+  const frozen = new Map<string, number>()
   const mta: MtaSource = {
     async live(id) {
       loads++
       if (failing.has(id)) throw new Error(`${id} down`)
-      return feed(id, id === "nqrw" ? trips("R", "R22N", 7, 8, clock / 1000 + 60) : [], clock / 1000)
+      const at = frozen.get(id) ?? clock / 1000
+      return feed(id, id === "nqrw" ? trips("R", "R22N", 7, 8, at + 60) : [], at)
     },
     recorded: () => null,
   }
   let bikesDown = false
+  let bikesUpdated = new Date(AT * 1000).toISOString()
   const citibike = {
     get: async () => {
       if (bikesDown) throw new Error("GBFS down")
-      return FIXTURE_DOCKS
+      return { ...FIXTURE_DOCKS, updated: bikesUpdated }
     },
   }
   const warn = mock.method(console, "warn", () => {})
@@ -166,10 +179,20 @@ test("live mode answers from the feeds now, and at once from the last state whil
     // A state over two minutes old is not served: the question waits for a new one.
     failing = new Set()
     bikesDown = false
+    bikesUpdated = new Date(clock).toISOString()
+    frozen.set("nqrw", clock / 1000)
     clock += 180_000
     const fresh = await provider.get(null)
     assert.equal(fresh.time, new Date(clock).toISOString().replace(/\.000Z$/, "Z"))
     assert.equal(fresh.docks.length, FIXTURE_DOCKS.docks.length)
+    assert.ok(fresh.lines.some((l) => l.id === "R"), "a feed three minutes old still counts")
+
+    // Old data served while a source is down is left out, not presented as now.
+    clock += 600_000
+    const later = await provider.get(null)
+    assert.ok(!later.lines.some((l) => ["N", "Q", "R", "W"].includes(l.id)), "a feed thirteen minutes old is left out")
+    assert.ok(later.lines.some((l) => l.id === "F"))
+    assert.deepEqual(later.docks, [], "docks thirteen minutes old are left out")
   } finally {
     warn.mock.restore()
   }

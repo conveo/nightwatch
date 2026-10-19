@@ -103,9 +103,12 @@ from the view's mode, and the panel says which:
   caches as the layers' own routes.
 
 Line service is worked out from the trains: the minutes between trains at each line's
-busiest platform over the next hour, "reduced" past 15 minutes, "suspended" when no
-train of the line is in the feed. `GET /api/city?mode=live` (or
-`?mode=recorded&t=…`) shows the state a question is answered from.
+busiest platform over the next hour, "reduced" past 15 minutes (a single train in the
+hour counts as one an hour), "suspended" when no train of the line is due. In live
+mode, data a feed's cache still serves after an outage is left out once it is old
+(trains after 5 minutes, docks after 10), rather than presented as now.
+`GET /api/city?mode=live` (or `?mode=recorded&t=…`) shows the state a question is
+answered from.
 
 ## How it performs
 

@@ -44,10 +44,10 @@ function service(id: string, headwayMin: number | null, status: LineStatus, note
 // between trains at its busiest platform over the next hour. The feeds carry no
 // delays (those are in the MTA's alerts, not read here), so a line is "normal" when
 // its trains come at least every REDUCED_HEADWAY_MIN, "reduced" when they come less
-// often or fewer than two arrive in the hour, and "suspended" when no trip of it is
-// in the feed at all. Lines whose feed is missing are left out, not guessed. The
-// headway is the line's wherever it runs, so a weekend reroute away from these
-// stations still counts as running.
+// often (a single train in the hour counts as one an hour), and "suspended" when no
+// train of it is due in the hour or none is in the feed at all. Lines whose feed is
+// missing are left out, not guessed. The headway is the line's wherever it runs, so a
+// weekend reroute away from these stations still counts as running.
 export function lineServices(feeds: TrainFeed[], at: number, lines: string[] = LINES): LineService[] {
   const present = new Set(feeds.flatMap((f) => FEEDS[f.feed] ?? []))
   // Per line, per platform ("R22N"): when its trains arrive in the hour from `at`.
@@ -71,7 +71,8 @@ export function lineServices(feeds: TrainFeed[], at: number, lines: string[] = L
       if (platforms == null) return service(id, null, "suspended", "not running now: no trains in the MTA's realtime feed")
       let busiest: number[] = []
       for (const times of platforms.values()) if (times.length > busiest.length) busiest = times
-      if (busiest.length < 2) return service(id, null, "reduced", "fewer than two trains in the next hour")
+      if (busiest.length === 0) return service(id, null, "suspended", "no train due in the next hour")
+      if (busiest.length === 1) return service(id, 60, "reduced", "only one train due in the next hour")
       busiest.sort((a, b) => a - b)
       const headway = Math.max(1, Math.round((busiest.at(-1)! - busiest[0]!) / (busiest.length - 1) / 60))
       return headway > REDUCED_HEADWAY_MIN
@@ -119,6 +120,11 @@ export const CITIBIKE_FIXTURE = fileURLToPath(new URL("../../public/fixtures/cit
 // to MAX_AGE_MS old answers at once while a newer one loads every REFRESH_MS.
 const REFRESH_MS = 15_000
 const MAX_AGE_MS = 120_000
+// The shared sources serve their last good data while a feed is down. Data older than
+// this does not describe the city now, so it is left out like a missing feed: the
+// MTA's predictions run out within the hour, and GBFS updates every minute or so.
+export const STALE_TRAINS_MS = 5 * 60_000
+export const STALE_DOCKS_MS = 10 * 60_000
 
 export function createLiveProvider(options: ProviderOptions = {}): CityStateProvider {
   const { mta: trains = mta, citibike: bikes = citibike, now = Date.now } = options
@@ -129,13 +135,25 @@ export function createLiveProvider(options: ProviderOptions = {}): CityStateProv
     const at = now()
     const [feeds, docks] = await Promise.all([
       Promise.allSettled(FEED_IDS.map((feed) => trains.live(feed))),
-      bikes.get().then(docksFrom, (error: unknown) => {
-        console.warn(`city state: Citi Bike: ${(error as Error).message}`)
-        return [] as Dock[]
-      }),
+      bikes.get().then(
+        (snapshot) => {
+          if (at - Date.parse(snapshot.updated) <= STALE_DOCKS_MS) return docksFrom(snapshot)
+          console.warn(`city state: Citi Bike data from ${snapshot.updated} is too old; leaving the docks out`)
+          return [] as Dock[]
+        },
+        (error: unknown) => {
+          console.warn(`city state: Citi Bike: ${(error as Error).message}`)
+          return [] as Dock[]
+        },
+      ),
     ])
-    feeds.forEach((r, i) => r.status === "rejected" && console.warn(`city state: MTA ${FEED_IDS[i]}: ${String(r.reason)}`))
-    const next = state("live", at / 1000, feeds.flatMap((r) => (r.status === "fulfilled" ? [r.value] : [])), docks)
+    const fresh = feeds.flatMap((r, i) => {
+      if (r.status === "rejected") console.warn(`city state: MTA ${FEED_IDS[i]}: ${String(r.reason)}`)
+      else if (at - r.value.timestamp * 1000 > STALE_TRAINS_MS) console.warn(`city state: MTA ${FEED_IDS[i]} is too old; leaving it out`)
+      else return [r.value]
+      return []
+    })
+    const next = state("live", at / 1000, fresh, docks)
     current = { at, state: next }
     return next
   }
