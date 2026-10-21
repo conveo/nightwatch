@@ -1,0 +1,17 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway (the red pin), rendered in a web browser. Citi Bike docks are drawn as vertical bars at their real positions: the height of a bar is the number of bikes available, classic bikes in blue with e-bikes stacked on top in green.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "dock_bars",
+      "instructions": "Vertical bars of different heights stand at street corners around the red pin.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "ebike_colour",
+      "instructions": "Several bars have an upper part in a second colour, clearly different from the colour of their lower part.",
+      "min": 0.8
+    }
+  ]
+}

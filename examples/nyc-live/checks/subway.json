@@ -1,0 +1,23 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, seen from straight above, with the blocks of buildings around the venue. The subway lines are drawn as tubes 12 m below street level, in their official route colours, seen through the ground (and, fainter, through the buildings), under the street centrelines, which are drawn as faint white lines. The venue is marked by a red pin on a red ring at the centre, with a red '598 Broadway' label just above it.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "lines_under_streets",
+      "instructions": "Thick lines in at least three distinct colours (such as yellow, green and orange) run across the map like subway lines, and the faint ground grid lines cross over them.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "yellow_line_by_pin",
+      "instructions": "A yellow line passes right next to the red pin and ring at the centre, within about two ring widths of it.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "station_markers",
+      "instructions": "Small white round markers sit on the coloured lines, like stations on a subway map.",
+      "min": 0.8
+    }
+  ]
+}

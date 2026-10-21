@@ -1,0 +1,15 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "train_blocks_on_lines",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "not_real_time_notice",
+      "probability": 1
+    }
+  ]
+}

@@ -2,8 +2,8 @@
   color-scheme: dark;
   --bg: #0b1020;
   --fg: #e8ecf4;
-  --muted: #9aa4b8;
-  --panel: rgba(11, 16, 32, 0.78);
+  --muted: #aeb7c9;
+  --panel: rgba(11, 16, 32, 0.9);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -31,22 +31,33 @@ body {
   position: fixed;
   top: 16px;
   left: 16px;
-  padding: 12px 16px;
-  border-radius: 10px;
-  background: var(--panel);
+  /* Clear of the ask panel at the top right (480px, src/ask/panel.css): the status
+     line wraps instead. */
+  max-width: min(1040px, calc(100vw - 544px));
   pointer-events: none;
 }
 
+/* The HUD carries notices only (main.ts hides the line when there are none, and the
+   card goes with it); the title stays for screen readers, out of sight. */
 #hud h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 600;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 #hud p {
-  margin: 4px 0 0;
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--panel);
   font-size: 24px;
-  color: var(--muted);
+  line-height: 1.25;
+  font-weight: 500;
+  /* Nearly as light as the title: it carries the MTA notice, which must read from the back. */
+  color: #dde3ee;
 }
 
 #ask {
@@ -58,6 +69,20 @@ body {
   border-radius: 10px;
   background: var(--panel);
   font-size: 24px;
+}
+
+/* Narrower screens have no room for both side by side: the ask panel goes between the
+   HUD and the toolbar, whose edges main.ts keeps in --hud-bottom and --toolbar-top. */
+@media (max-width: 1100px) {
+  #hud {
+    max-width: calc(100vw - 32px);
+  }
+
+  /* With the class, as src/ask/panel.css sets the height limit; this file loads later. */
+  #ask.ask-panel {
+    top: calc(var(--hud-bottom, 120px) + 12px);
+    max-height: calc(var(--toolbar-top, 100vh) - var(--hud-bottom, 120px) - 24px);
+  }
 }
 
 /* Bottom left: the reviewer overlay's button sits bottom right. */

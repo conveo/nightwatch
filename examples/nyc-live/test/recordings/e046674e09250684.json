@@ -1,0 +1,20 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "dense_buildings",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "pin_among_buildings",
+      "probability": 0.95
+    },
+    {
+      "type": "predicate",
+      "name": "one_highlighted",
+      "probability": 1
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "context": "The screenshot attached to a review note: a person opened nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, in a web browser, dropped a numbered pin on the venue with the reviewer overlay, and sent a note. The overlay hides itself while it captures the browser tab, then draws the pin onto the captured image.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "map_scene",
+      "instructions": "A 3D map scene is visible, not a blank or black canvas.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "numbered_pin",
+      "instructions": "A numbered pin marker is drawn on the image.",
+      "min": 0.8
+    }
+  ]
+}
