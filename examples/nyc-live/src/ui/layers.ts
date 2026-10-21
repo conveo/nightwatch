@@ -27,12 +27,10 @@ export function toggleLayer(layers: readonly string[] | null, all: readonly stri
   return all.every((l) => shown.has(l)) ? null : all.filter((l) => shown.has(l))
 }
 
-// The HUD's status line: only what the viewer must be told, each layer's notice, then
-// the failure of any layer that did not start, until it recovers. A summary of null
-// means the layer has not loaded; "" means it has, with nothing to say (a live layer
-// that draws after a retry is dropped from `failures`, layer id -> error). Quiet
-// layers' summaries are left out: what they draw speaks for itself on screen. Empty
-// when all is well, and the HUD then hides.
+// The HUD's status line: each layer's summary, then the failure of any layer that did
+// not start, until it recovers (a live layer that draws after a retry has a summary
+// again, and is dropped from `failures`, layer id -> error). Quiet layers' summaries
+// are left out: what they draw speaks for itself on screen.
 export function statusLine(
   layers: ReadonlyArray<{ id: string; summary?(): string | null }>,
   failures: Map<string, string>,
@@ -41,10 +39,10 @@ export function statusLine(
   const parts: string[] = []
   for (const layer of layers) {
     const summary = layer.summary?.()
-    if (summary == null) continue
+    if (summary == null || summary === "") continue
     failures.delete(layer.id)
-    if (summary !== "" && !quiet.has(layer.id)) parts.push(summary)
+    if (!quiet.has(layer.id)) parts.push(summary)
   }
   for (const [id, error] of failures) parts.push(`failed: ${id}: ${error}`)
-  return parts.join(" · ")
+  return parts.join(" · ") || "ready"
 }

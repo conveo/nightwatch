@@ -209,9 +209,8 @@ const TIME = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 })
 
-export function trainsSummary(dataTime: number | null, nowMs: number, failed: string[] = []): string {
-  // The trains on screen speak for themselves: the HUD keeps to the notices.
-  const parts: string[] = []
+export function trainsSummary(count: number, dataTime: number | null, nowMs: number, failed: string[] = []): string {
+  const parts = [`${count} ${count === 1 ? "train" : "trains"}`]
   if (dataTime != null && nowMs - dataTime * 1000 > STALE_AFTER_MS) {
     parts.push(`MTA data from ${TIME.format(dataTime * 1000)} ET: positions may not be real time`)
   }
@@ -422,7 +421,7 @@ export function createTrainsLayer(options: TrainsOptions = {}): Layer {
     },
     summary() {
       if (!loaded) return null
-      return trainsSummary(dataTime(), now(), failed)
+      return trainsSummary(drawn, dataTime(), now(), failed)
     },
   }
   playback.set(layer, (perfNow) => (ctx.mode === "recorded" ? clock(perfNow) : null))

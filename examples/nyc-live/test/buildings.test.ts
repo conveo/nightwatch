@@ -169,8 +169,7 @@ function layerOn(file: BuildingsFile | null) {
 test("pick returns the BIN under the ray and select highlights that building", async () => {
   const layer = layerOn(null)
   await layer.init({ mode: "fixture", time: null })
-  // Loaded, with nothing for the HUD to say.
-  assert.equal(layer.summary!(), "")
+  assert.equal(layer.summary!(), `${fixture.buildings.length} buildings`)
   // Straight down onto the venue's roof, and up into the sky.
   assert.equal(layer.pick!(new Raycaster(new Vector3(0, 500, 0), new Vector3(0, -1, 0))), `bin:${VENUE.bin}`)
   assert.equal(layer.pick!(new Raycaster(new Vector3(0, 500, 0), new Vector3(0, 1, 0))), null)
@@ -200,16 +199,16 @@ test("live mode draws the full download, or says it fell back to the fixture", a
   const full: BuildingsFile = { ...fixture, buildings: fixture.buildings.slice(0, 3) }
   const live = layerOn(full)
   await live.init({ mode: "live", time: null })
-  assert.equal(live.summary!(), "")
+  assert.equal(live.summary!(), "3 buildings")
   const missing = layerOn(null)
   await missing.init({ mode: "recorded", time: null })
-  assert.equal(missing.summary!(), "buildings: fixture only")
+  assert.equal(missing.summary!(), `${fixture.buildings.length} buildings (fixture only)`)
   const broken = createBuildingsLayer(async (url) => {
     if (url.startsWith("fixtures/")) return fixture
     throw new SyntaxError("Unexpected end of JSON input")
   })
   await broken.init({ mode: "live", time: null })
-  assert.equal(broken.summary!(), "buildings: fixture only")
+  assert.equal(broken.summary!(), `${fixture.buildings.length} buildings (fixture only)`)
 })
 
 // test/fixtures/buildings.png is a real screenshot of the Venue view with the venue
