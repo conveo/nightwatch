@@ -173,13 +173,16 @@ renderer.setAnimationLoop((now) => {
 const results = await Promise.allSettled(layers.map((layer) => layer.init({ mode: view.mode, time: view.t })))
 const errors = results.flatMap((r, i) => (r.status === "rejected" ? [`${layers[i]!.id}: ${String(r.reason)}`] : []))
 // Live layers refresh their data, so the status line is read again every few seconds,
-// and a layer that failed to start but draws after a retry leaves the failures. The
-// streets and the venue pin speak for themselves on screen, so the line keeps to what
-// loads and changes, short enough to read from the back of a room.
-const QUIET_LAYERS = new Set(["ground", "venue"])
+// and a layer that failed to start but draws after a retry leaves the failures. What
+// the layers draw speaks for itself on screen, so their counts stay out: the HUD shows
+// only notices (positions that may not be real time, missing data, failures) and hides
+// when there are none.
+const QUIET_LAYERS = new Set(["ground", "subway", "citibike", "venue"])
 const failures = new Map(results.flatMap((r, i): Array<[string, string]> => (r.status === "rejected" ? [[layers[i]!.id, String(r.reason)]] : [])))
 function renderStatus(): void {
-  status.textContent = statusLine(layers, failures, QUIET_LAYERS)
+  const line = statusLine(layers, failures, QUIET_LAYERS)
+  status.textContent = line
+  hud.hidden = line === ""
 }
 renderStatus()
 setInterval(renderStatus, 5_000)

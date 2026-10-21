@@ -337,13 +337,13 @@ test("a newer feed's trip keeps the stops an older one knew it had passed", () =
 
 test("the HUD says positions may not be real time once the data is over a minute old", () => {
   const now = Date.UTC(2026, 9, 18, 23, 10, 0)
-  assert.equal(trainsSummary(12, now / 1000 - 30, now), "12 trains")
-  assert.equal(trainsSummary(1, now / 1000 - 60, now), "1 train")
+  assert.equal(trainsSummary(now / 1000 - 30, now), "")
+  assert.equal(trainsSummary(now / 1000 - 60, now), "")
   assert.equal(
-    trainsSummary(12, now / 1000 - 61, now),
-    "12 trains · MTA data from Oct 18, 7:08 PM ET: positions may not be real time",
+    trainsSummary(now / 1000 - 61, now),
+    "MTA data from Oct 18, 7:08 PM ET: positions may not be real time",
   )
-  assert.equal(trainsSummary(0, null, now, ["ace"]), "0 trains · no train data for ace")
+  assert.equal(trainsSummary(null, now, ["ace"]), "no train data for ace")
 })
 
 test("a train is its line's colour, a little lighter", () => {
@@ -394,7 +394,7 @@ test("fixture and recorded mode draw trains on their lines and say they may not 
   const { layer, mesh, requests } = await layerFrom(subway, "fixture", null)
   assert.deepEqual(requests.map((r) => r.feed).sort(), ["1234567", "bdfm", "nqrw"])
   assert.ok(mesh.count >= 1, `${mesh.count} trains`)
-  assert.match(layer.summary!()!, new RegExp(`^${mesh.count} trains? · MTA data from .*: positions may not be real time$`))
+  assert.match(layer.summary!()!, /^MTA data from .*: positions may not be real time$/)
   const paths = subway.shapes.map((s) => toPath(s.points))
   const m = new Matrix4()
   const p = new Vector3()
@@ -446,14 +446,14 @@ test("a feed that fails at startup is asked for again, and its trains then appea
   })
   await layer.init({ mode: "fixture", time: null })
   const mesh = layer.group.getObjectByName("train-blocks") as InstancedMesh
-  assert.equal(layer.summary!(), "0 trains · no train data for 1234567, bdfm, nqrw")
+  assert.equal(layer.summary!(), "no train data for 1234567, bdfm, nqrw")
   assert.equal(mesh.count, 0)
   down = false
   layer.update!(performance.now() + REFRESH_MS + 1, 16)
   await new Promise((resolve) => setTimeout(resolve, 10))
   layer.update!(performance.now() + REFRESH_MS + 2, 16)
   assert.ok(mesh.count >= 1, `${mesh.count} trains`)
-  assert.match(layer.summary!()!, /^\d+ trains? · MTA data from .*: positions may not be real time$/)
+  assert.match(layer.summary!()!, /^MTA data from .*: positions may not be real time$/)
 })
 
 // test/fixtures/trains.png is a real screenshot of recorded mode, and test/recordings/

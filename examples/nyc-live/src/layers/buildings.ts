@@ -222,10 +222,7 @@ export function createBuildingsLayer(load: (url: string) => Promise<BuildingsFil
       showSelection()
       console.info(`buildings: ${buildings.length} in ${tiles.length} meshes, ${Math.round(performance.now() - started)} ms`)
     },
-    summary: () =>
-      buildings.length === 0
-        ? null
-        : `${buildings.length.toLocaleString("en-US")} buildings${fallback ? " (fixture only)" : ""}`,
+    summary: () => (buildings.length === 0 ? null : fallback ? "buildings: fixture only" : ""),
     pick(ray: Raycaster) {
       const hit = ray.intersectObjects(tiles, false)[0]
       if (hit?.faceIndex == null) return null

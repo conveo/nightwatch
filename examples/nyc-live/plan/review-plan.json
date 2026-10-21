@@ -90,7 +90,7 @@
       "intro": "One bar per dock, as tall as the bikes available, with e-bikes stacked on top in a second colour.",
       "steps": [
         "Open the view (only the ground, the docks and the pin). Bars of different heights stand at street corners around the pin, blue below and green on top.",
-        "Open [the live docks](/#cam=320,420,620&tgt=0,0,0&mode=live&layers=ground,citibike,venue). Around 235 docks stand across the area, and the status line gives the bikes available and the time of the data."
+        "Open [the live docks](/#cam=320,420,620&tgt=0,0,0&mode=live&layers=ground,citibike,venue). Around 235 docks stand across the area, their heights from the feed right now."
       ],
       "pass": "Docks stand at street corners and their heights change with the bikes available.",
       "note": "The live step needs the dev server to reach the Citi Bike feed."
