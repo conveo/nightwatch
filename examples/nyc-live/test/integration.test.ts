@@ -301,21 +301,26 @@ test("recorded playback tells the view which moment is on screen", async () => {
 
 test("the status line drops a startup failure once the layer recovers", () => {
   let docks: string | null = null
+  const notice = "MTA data from Oct 18, 7:02 PM ET: positions may not be real time"
   const layers = [
     { id: "ground", summary: () => "6,608 street segments" },
-    { id: "buildings", summary: () => "670 buildings" },
+    { id: "buildings", summary: () => "" },
+    { id: "trains", summary: () => notice },
     { id: "citibike", summary: () => docks },
     { id: "venue", summary: () => "598 Broadway" },
   ]
   const failures = new Map([["citibike", "Error: /api/citibike: HTTP 502"]])
-  const quiet = new Set(["ground", "venue"])
-  assert.equal(statusLine(layers, failures, quiet), "670 buildings · failed: citibike: Error: /api/citibike: HTTP 502")
-  // A later retry draws the docks: their summary replaces the old failure, for good.
+  const quiet = new Set(["ground", "citibike", "venue"])
+  assert.equal(statusLine(layers, failures, quiet), `${notice} · failed: citibike: Error: /api/citibike: HTTP 502`)
+  // A later retry draws the docks: the old failure goes, for good, and their count
+  // stays out of the line.
   docks = "235 Citi Bike docks · 8,067 bikes (3,537 e-bikes) at 19:57"
-  assert.equal(statusLine(layers, failures, quiet), `670 buildings · ${docks}`)
+  assert.equal(statusLine(layers, failures, quiet), notice)
   docks = null
-  assert.equal(statusLine(layers, failures, quiet), "670 buildings")
-  assert.equal(statusLine([], new Map()), "ready")
+  assert.equal(statusLine(layers, failures, quiet), notice)
+  // Loaded with nothing to say ("") is not a failure, and nothing to say hides the HUD.
+  assert.equal(statusLine([{ id: "buildings", summary: () => "" }], new Map([["buildings", "Error"]])), "")
+  assert.equal(statusLine([], new Map()), "")
 })
 
 // A 1600x900 screen looking at a preset's view.

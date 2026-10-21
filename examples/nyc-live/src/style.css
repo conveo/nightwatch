@@ -31,23 +31,28 @@ body {
   position: fixed;
   top: 16px;
   left: 16px;
-  padding: 12px 16px;
   /* Clear of the ask panel at the top right (480px, src/ask/panel.css): the status
      line wraps instead. */
   max-width: min(1040px, calc(100vw - 544px));
-  border-radius: 10px;
-  background: var(--panel);
   pointer-events: none;
 }
 
+/* The HUD carries notices only (main.ts hides the line when there are none, and the
+   card goes with it); the title stays for screen readers, out of sight. */
 #hud h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 600;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 #hud p {
-  margin: 4px 0 0;
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--panel);
   font-size: 24px;
   line-height: 1.25;
   font-weight: 500;
