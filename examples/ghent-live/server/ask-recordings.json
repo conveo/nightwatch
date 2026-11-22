@@ -1,0 +1,297 @@
+{
+  "aeeb1a024003a043": {
+    "ask": "busy:now",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "predicate",
+        "name": "busy",
+        "probability": 0
+      }
+    ]
+  },
+  "d1a39e21c629ded3": {
+    "ask": "drive:coupure~portus-ganda",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "predicate",
+        "name": "drive",
+        "probability": 0
+      }
+    ]
+  },
+  "9cf26233a27ed7cb": {
+    "ask": "drive:kuip~coupure",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "predicate",
+        "name": "drive",
+        "probability": 0.01
+      }
+    ]
+  },
+  "76cf5026ae9d2422": {
+    "ask": "drive:tolhuis~krook",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "predicate",
+        "name": "drive",
+        "probability": 0
+      }
+    ]
+  },
+  "ac1831040dfd2921": {
+    "ask": "park:belfort",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:sint-michiels",
+        "probabilities": [
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.93
+          },
+          {
+            "value": "garage:reep",
+            "probability": 0.04
+          },
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.03
+          },
+          {
+            "value": "bikes:donkey:22589",
+            "probability": 0
+          }
+        ],
+        "confidence": 0.91
+      }
+    ]
+  },
+  "4a3739083145922f": {
+    "ask": "park:graslei",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:sint-michiels",
+        "probabilities": [
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.96
+          },
+          {
+            "value": "garage:ramen",
+            "probability": 0.02
+          },
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.02
+          },
+          {
+            "value": "bikes:donkey:12024",
+            "probability": 0
+          }
+        ],
+        "confidence": 0.95
+      }
+    ]
+  },
+  "5268168049735984": {
+    "ask": "park:gravensteen",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:ramen",
+        "probabilities": [
+          {
+            "value": "garage:ramen",
+            "probability": 0.55
+          },
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.22
+          },
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.23
+          },
+          {
+            "value": "bikes:donkey:32116",
+            "probability": 0
+          }
+        ],
+        "confidence": 0.4
+      }
+    ]
+  },
+  "94ff7a3d0b75913d": {
+    "ask": "park:sint-baafs",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:reep",
+        "probabilities": [
+          {
+            "value": "garage:reep",
+            "probability": 0.96
+          },
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.02
+          },
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.02
+          },
+          {
+            "value": "bikes:donkey:22589",
+            "probability": 0
+          }
+        ],
+        "confidence": 0.95
+      }
+    ]
+  },
+  "d04862a23632dac9": {
+    "ask": "park:sint-michielsbrug",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:sint-michiels",
+        "probabilities": [
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.93
+          },
+          {
+            "value": "garage:ramen",
+            "probability": 0.04
+          },
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.02
+          },
+          {
+            "value": "bikes:donkey:12018",
+            "probability": 0.01
+          }
+        ],
+        "confidence": 0.91
+      }
+    ]
+  },
+  "6a6881fedaa927de": {
+    "ask": "park:sint-niklaas",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:sint-michiels",
+        "probabilities": [
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.95
+          },
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.03
+          },
+          {
+            "value": "garage:reep",
+            "probability": 0.02
+          },
+          {
+            "value": "bikes:donkey:12018",
+            "probability": 0
+          }
+        ],
+        "confidence": 0.93
+      }
+    ]
+  },
+  "9fe42af230f5b2ac": {
+    "ask": "park:stadhuis",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:vrijdagmarkt",
+        "probabilities": [
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.94
+          },
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.05
+          },
+          {
+            "value": "garage:reep",
+            "probability": 0.01
+          },
+          {
+            "value": "bikes:donkey:22589",
+            "probability": 0
+          }
+        ],
+        "confidence": 0.92
+      }
+    ]
+  },
+  "e4c8b23556fb19e5": {
+    "ask": "park:vrijdagmarkt",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "park",
+        "choice": "garage:vrijdagmarkt",
+        "probabilities": [
+          {
+            "value": "garage:vrijdagmarkt",
+            "probability": 0.97
+          },
+          {
+            "value": "garage:reep",
+            "probability": 0.02
+          },
+          {
+            "value": "garage:sint-michiels",
+            "probability": 0.01
+          },
+          {
+            "value": "bikes:donkey:34466",
+            "probability": 0
+          }
+        ],
+        "confidence": 0.96
+      }
+    ]
+  },
+  "629f27ea70b2f853": {
+    "ask": "q:Is there space at Sint-Michiels?",
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "predicate",
+        "name": "question",
+        "probability": 1
+      }
+    ]
+  }
+}
