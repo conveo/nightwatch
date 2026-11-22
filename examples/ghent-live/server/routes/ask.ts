@@ -351,8 +351,11 @@ export function startDeadline(ms: number, outer?: AbortSignal): Deadline {
 }
 
 // `work`, or the signal's reason as soon as it aborts, whichever comes first. The work
-// itself goes on (a feed's request still fills its route's cache for the next question).
+// itself goes on (a feed's request still fills its route's cache for the next question),
+// and its failure is always handled here, so work nobody waits for any more never
+// reports an unhandled rejection.
 export function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  work.catch(() => {})
   if (signal.aborted) return Promise.reject(signal.reason)
   return new Promise<T>((resolve, reject) => {
     const stop = () => reject(signal.reason)
@@ -513,6 +516,8 @@ export function createAskRoute(
     // given the deadline's signal and waited for no longer than the deadline.
     let state: LiveCityState
     try {
+      // A request that is already over (its client went) does not read the city at all.
+      if (deadline.signal.aborted) throw deadline.signal.reason
       state = await untilAborted(provider.current({ mode, time, signal: deadline.signal }), deadline.signal)
     } catch (error) {
       if (error instanceof AskError) throw error
@@ -538,7 +543,8 @@ export function createAskRoute(
     const secret = apiKey()
     if (secret == null || secret === "") {
       recordings ??= readRecordings(options.recordingsFile)
-      const all = await recordings
+      // Within the deadline too; the shared read goes on for the requests after this one.
+      const all = await untilAborted(recordings, deadline.signal)
       const recorded = Object.hasOwn(all, key) ? all[key] : undefined
       if (recorded == null) {
         throw new AskError(

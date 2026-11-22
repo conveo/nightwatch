@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, test } from "node:test"
 import type { BikeStationState, CityStateProvider, GarageState } from "../server/city-state.ts"
 import { FIXTURE_CITY_STATE } from "../server/city-state-fixture.ts"
@@ -8,6 +10,7 @@ import {
   bikeFeedNotice,
   boltIsStale,
   cityStateFor,
+  withinBudget,
   CityStateError,
   createLiveCityState,
   liveCityState,
@@ -19,7 +22,7 @@ import {
   withoutStaleBolt,
 } from "../server/city-state-live.ts"
 import type { DecisionRequest, DecisionResponse } from "../server/decisions.ts"
-import { ASK_DEADLINE_MS, AskError, createAskRoute, MIN_DECIDE_MS } from "../server/routes/ask.ts"
+import { ASK_DEADLINE_MS, AskError, createAskRoute, MIN_DECIDE_MS, untilAborted } from "../server/routes/ask.ts"
 import { mergeBikeFeeds, reportedAt } from "../server/routes/bikes.ts"
 import type { ParkingSnapshot } from "../server/routes/parking.ts"
 import { SECTOR_NAMES } from "../src/layers/circulation.ts"
@@ -363,6 +366,58 @@ describe("one deadline for a question", () => {
     await assert.rejects(pending, (e: AskError) => e.status === 499)
     assert.ok(seen.signal.aborted, "the call in flight is aborted")
     assert.equal((seen.signal.reason as AskError).status, 499)
+  })
+
+  test("a question already over reads nothing, and work nobody waits for never rejects unhandled", async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      let reads = 0
+      const counted = <T>(value: T) => async () => {
+        reads++
+        return value
+      }
+      const provider = createLiveCityState({ garages: counted({ time: "2026-11-22T19:41:00Z", garages: [GARAGE] }), bikes: counted({ stations: [] }), now: () => NOW })
+      const { calls, decide } = counting()
+      const route = createAskRoute({ provider, apiKey: () => "sk-test", decide, timeoutMs: DEADLINE })
+      await assert.rejects(route.ask({ ask: "park:gravensteen", mode: "live", time: null }, { signal: AbortSignal.abort() }), (e: AskError) => e.status === 499)
+      await assert.rejects(provider.current({ mode: "live", time: null, signal: AbortSignal.abort() }))
+      assert.equal(reads, 0)
+      assert.equal(calls.length, 0)
+
+      // Work handed over after the wait has ended still has its failure handled.
+      const failsLater = () => new Promise<never>((_, reject) => setTimeout(() => reject(new Error("late failure")), 5))
+      await assert.rejects(untilAborted(failsLater(), AbortSignal.abort()))
+      await assert.rejects(withinBudget(failsLater(), BUDGET, AbortSignal.abort()))
+      const gone = new AbortController()
+      const waiting = untilAborted(failsLater(), gone.signal)
+      gone.abort()
+      await assert.rejects(waiting)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      assert.deepEqual(unhandled, [])
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
+  })
+
+  test("without a key, a recorded answer whose file does not arrive ends at the deadline", { skip: process.platform === "win32" }, async () => {
+    // A named pipe nobody writes to: reading it waits until someone does.
+    const dir = mkdtempSync(join(tmpdir(), "ghent-live-fifo-"))
+    const fifo = join(dir, "recordings.json")
+    if (spawnSync("mkfifo", [fifo]).status !== 0) return
+    try {
+      const route = createAskRoute({ apiKey: () => undefined, recordingsFile: fifo, timeoutMs: DEADLINE })
+      const { ms, result } = await timed(() => route.ask({ ask: "busy:now" }))
+      assert.equal(result.status, "rejected")
+      assert.equal(((result as PromiseRejectedResult).reason as AskError).status, 504)
+      assert.ok(ms < DEADLINE + 100, `${ms} ms`)
+    } finally {
+      // Let the pending read finish, so nothing is left open.
+      writeFileSync(fifo, "{}")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test("a call two requests share goes on while one of them waits, and stops when the last one leaves", async () => {

@@ -54,6 +54,8 @@ type Read<T> = { ok: true; value: T } | { ok: false; late: boolean }
 // `work` within `ms`, or why not: it failed, or it was late. When `signal` aborts first
 // (the whole question's deadline, or the client went), that reason is thrown instead.
 export function withinBudget<T>(work: Promise<T>, ms: number, signal?: AbortSignal): Promise<Read<T>> {
+  // The work's failure is always handled, also when nobody waits for it any more.
+  work.catch(() => {})
   if (signal?.aborted) return Promise.reject(signal.reason)
   return new Promise<Read<T>>((resolve, reject) => {
     const finish = (): void => {
@@ -168,6 +170,8 @@ export function createLiveCityState(sources: LiveSources = {}): LiveCityStatePro
 
   return {
     async current(options) {
+      // A question that is already over does not start the feeds' requests.
+      if (options.signal?.aborted) throw options.signal.reason
       const budget = sources.feedBudgetMs ?? FEED_BUDGET_MS
       const seconds = `${budget / 1000} s`
       // Both feeds at once, each within its budget; a reason to stop (the deadline, a
