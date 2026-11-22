@@ -74,19 +74,29 @@ function sourceLine(answer: AskAnswer): string {
 // Returns a promise that resolves once a question that came in the URL (`ask`) shows
 // its answer or its error, so a screenshot of that view waits for it (at most
 // ANSWER_TIMEOUT_MS).
+//
+// With no question the panel folds to its title, a small "Ask Ghent" button, so it
+// keeps the scene and the other controls clear; the title opens and folds it, and ×
+// clears the question and folds it.
 export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void> {
   root.replaceChildren()
   root.classList.add("ask-panel")
   root.setAttribute("aria-label", "Ask Ghent")
 
   const head = el("div", "ask-head")
-  const title = el("h2", "ask-title", "Ask Ghent")
+  const title = el("h2", "ask-title")
+  const toggle = el("button", "ask-toggle", "Ask Ghent")
+  toggle.type = "button"
+  toggle.setAttribute("aria-controls", "ask-body")
+  title.append(toggle)
   const clear = el("button", "ask-clear", "×")
   clear.type = "button"
-  clear.title = "Clear the question"
-  clear.setAttribute("aria-label", "Clear the question")
+  clear.title = "Clear the question and close"
+  clear.setAttribute("aria-label", "Clear the question and close")
   head.append(title, clear)
 
+  const body = el("div", "ask-body")
+  body.id = "ask-body"
   const result = el("section", "ask-result")
   result.setAttribute("aria-live", "polite")
 
@@ -112,20 +122,61 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
     list.append(option)
   }
   form.append(input, submit, list)
-  root.append(head, result, form)
+  body.append(result, form)
+  root.append(head, body)
   root.hidden = false
 
   let shown: string | null = null
   let seq = 0
 
+  // On a phone the open panel fills the space between the left-hand controls (the
+  // Day/Night switch and the layers) and the preset bar, so it never covers them; it
+  // is measured again whenever either of them changes size.
+  const narrow = window.matchMedia("(max-width: 760px)")
+  function place(): void {
+    if (!narrow.matches || root.dataset.state !== "open") {
+      root.style.removeProperty("top")
+      root.style.removeProperty("max-height")
+      return
+    }
+    const above = document.querySelector(".ui-panel") ?? document.querySelector("#hud")
+    const below = document.querySelector(".ui-presets")
+    const top = Math.round((above?.getBoundingClientRect().bottom ?? 0) + 12)
+    const bottom = Math.round((below?.getBoundingClientRect().top ?? window.innerHeight) - 12)
+    root.style.top = `${top}px`
+    root.style.maxHeight = `${Math.max(120, bottom - top)}px`
+  }
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(place)
+    for (const selector of [".ui-panel", ".ui-presets", "#hud"]) {
+      const node = document.querySelector(selector)
+      if (node != null) observer.observe(node)
+    }
+  }
+  window.addEventListener("resize", place)
+  narrow.addEventListener("change", place)
+
+  function setOpen(open: boolean): void {
+    root.dataset.state = open ? "open" : "closed"
+    toggle.setAttribute("aria-expanded", String(open))
+    toggle.title = open ? "Fold the panel" : "Ask a question about the city"
+    body.hidden = !open
+    clear.hidden = !open
+    place()
+  }
+
+  toggle.addEventListener("click", () => {
+    const open = root.dataset.state !== "open"
+    setOpen(open)
+    if (open && shown == null) input.focus()
+  })
+
   function renderEmpty(): void {
     result.replaceChildren(el("p", "ask-hint", "Where to park, whether the centre is busy, or any yes/no question."))
-    clear.hidden = true
   }
 
   function renderPending(ask: string): void {
     result.replaceChildren(el("p", "ask-question", textOf(ask)), el("p", "ask-pending", "Asking…"))
-    clear.hidden = false
   }
 
   function renderAnswer(answer: AskAnswer): void {
@@ -156,7 +207,6 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
       el("p", "ask-detail", answer.detail),
       el("p", "ask-meta", sourceLine(answer)),
     )
-    clear.hidden = false
   }
 
   function renderFailure(ask: string, failure: AskFailure): void {
@@ -164,7 +214,6 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
       el("p", "ask-question", failure.question ?? textOf(ask)),
       el("p", "ask-error", `No answer: ${failure.error}`),
     )
-    clear.hidden = false
   }
 
   // Asks the server and shows what comes back. Resolves once something is on screen.
@@ -207,8 +256,10 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
       seq++
       shown = null
       renderEmpty()
+      setOpen(false)
       return Promise.resolve()
     }
+    setOpen(true)
     if (parseAsk(raw) == null) {
       seq++
       shown = raw

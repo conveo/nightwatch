@@ -21,7 +21,12 @@ import type { BikeStationState } from "../city-state.ts"
 //
 //   { "time": "<ISO 8601, when the feeds were read>",
 //     "stations": BikeStationState[],
-//     "feeds": { "donkey": "ok", "bolt": "ok", "blue-bike": "missing" } }
+//     "feeds": { "donkey": "ok", "bolt": "ok", "blue-bike": "missing" },
+//     "reported": { "bolt": "<ISO 8601, the newest `last_reported` of its stations>" } }
+//
+// Bolt's feed says when each station last reported (`last_reported`), and has been
+// months behind; the live city state (server/city-state-live.ts) leaves Bolt out of
+// "ask Ghent" when it is older than an hour.
 //
 // public/fixtures/bikes.json has the same shape (fixture mode). `bikeStations()` gives
 // the stations for any mode in the `CityState` shape, for the live city state.
@@ -34,6 +39,8 @@ export type BikesAnswer = {
   time: string
   stations: BikeStationState[]
   feeds: Record<BikeOperator, FeedStatus>
+  // The newest time an operator's stations reported, where its feed says (Bolt only).
+  reported?: Partial<Record<BikeOperator, string>>
 }
 
 export const OPERATORS: readonly BikeOperator[] = ["donkey", "bolt", "blue-bike"]
@@ -69,7 +76,7 @@ export const FEED_URLS = {
     select: "station_id,num_bikes_available,is_renting",
   }),
   bolt: exportUrl("bolt-status-deelfietsstations-gent", {
-    select: "station_id,name,lat,lon,num_bikes_available,is_renting",
+    select: "station_id,name,lat,lon,num_bikes_available,is_renting,last_reported",
     where: IN_AREA,
   }),
   blueBike: BLUE_BIKE_DATASETS.map((dataset) =>
@@ -80,7 +87,7 @@ export const FEED_URLS = {
 // The records as far as this file reads them. Every field is checked before use.
 export type DonkeyLocation = { station_id?: unknown; name?: unknown; lat?: unknown; lon?: unknown }
 export type DonkeyAvailability = { station_id?: unknown; num_bikes_available?: unknown; is_renting?: unknown }
-export type BoltStation = DonkeyLocation & { num_bikes_available?: unknown; is_renting?: unknown }
+export type BoltStation = DonkeyLocation & { num_bikes_available?: unknown; is_renting?: unknown; last_reported?: unknown }
 export type BlueBikeStation = {
   id?: unknown
   name?: unknown
@@ -115,6 +122,15 @@ export function bikesAvailable(count: unknown, renting?: unknown): number {
   return n == null || n < 0 ? 0 : Math.floor(n)
 }
 
+// GBFS `last_reported`: POSIX seconds (the city's export gives them as text), or an
+// ISO 8601 time. Milliseconds since 1970, or null when missing or malformed.
+export function reportedAt(value: unknown): number | null {
+  const seconds = finite(value)
+  if (seconds != null) return seconds > 0 ? seconds * 1000 : null
+  const ms = typeof value === "string" ? Date.parse(value) : Number.NaN
+  return Number.isNaN(ms) ? null : ms
+}
+
 // The records of a list that are objects; anything else in a feed (null, a number, a
 // string) is skipped, so one malformed item never hides the rest.
 function records<T>(list: readonly T[] | null): T[] {
@@ -134,10 +150,11 @@ export function mergeBikeFeeds(raw: RawFeeds): Omit<BikesAnswer, "time"> {
     const id = text(idValue)
     const lat = finite(latValue)
     const lon = finite(lonValue)
-    if (id == null || lat == null || lon == null || !inArea({ lat, lon })) return
+    if (id == null || lat == null || lon == null || !inArea({ lat, lon })) return false
     const key = `${operator}:${id}`
-    if (stations.has(key)) return
+    if (stations.has(key)) return false
     stations.set(key, { operator, id, name: text(nameValue) ?? id, lat, lon, available })
+    return true
   }
 
   const donkeyBikes = new Map<string, number>()
@@ -148,8 +165,11 @@ export function mergeBikeFeeds(raw: RawFeeds): Omit<BikesAnswer, "time"> {
   for (const s of records(raw.donkeyLocations)) {
     add("donkey", s.station_id, s.name, s.lat, s.lon, donkeyBikes.get(text(s.station_id) ?? "") ?? 0)
   }
+  let boltReported: number | null = null
   for (const s of records(raw.bolt)) {
-    add("bolt", s.station_id, s.name, s.lat, s.lon, bikesAvailable(s.num_bikes_available, s.is_renting))
+    if (!add("bolt", s.station_id, s.name, s.lat, s.lon, bikesAvailable(s.num_bikes_available, s.is_renting))) continue
+    const at = reportedAt(s.last_reported)
+    if (at != null && (boltReported == null || at > boltReported)) boltReported = at
   }
   for (const feed of raw.blueBike) {
     for (const s of records(feed)) add("blue-bike", s.id, s.name, s.latitude, s.longitude, bikesAvailable(s.bikes_available))
@@ -165,6 +185,7 @@ export function mergeBikeFeeds(raw: RawFeeds): Omit<BikesAnswer, "time"> {
       bolt: feedStatus([raw.bolt]),
       "blue-bike": feedStatus(raw.blueBike),
     },
+    reported: boltReported == null ? {} : { bolt: new Date(boltReported).toISOString() },
   }
 }
 
@@ -231,13 +252,17 @@ const feed = createBikeFeed()
 
 export const FIXTURE_PATH = fileURLToPath(new URL("../../public/fixtures/bikes.json", import.meta.url))
 
-// The stations in the `CityState` shape, for the live city state. Fixture mode reads
-// public/fixtures/bikes.json. There are no recorded bike snapshots, so recorded mode
-// reads the fixture too (the layer says so in its notice).
+// The whole answer for a data mode, for the live city state (it reads `reported`).
+// Fixture mode reads public/fixtures/bikes.json. There are no recorded bike
+// snapshots, so recorded mode reads the fixture too (the layer says so in its notice).
+export async function bikeAnswer(options: { mode: DataMode; time: string | null }): Promise<BikesAnswer> {
+  if (options.mode === "live") return feed.current()
+  return JSON.parse(await readFile(FIXTURE_PATH, "utf8")) as BikesAnswer
+}
+
+// The stations in the `CityState` shape, for the live city state.
 export async function bikeStations(options: { mode: DataMode; time: string | null }): Promise<BikeStationState[]> {
-  if (options.mode === "live") return (await feed.current()).stations
-  const fixture = JSON.parse(await readFile(FIXTURE_PATH, "utf8")) as BikesAnswer
-  return fixture.stations
+  return (await bikeAnswer(options)).stations
 }
 
 const route: Route = {

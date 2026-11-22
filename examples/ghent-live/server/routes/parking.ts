@@ -200,6 +200,21 @@ const live = createParkingSource()
 const FIXTURE = new URL("../../public/fixtures/parking.json", import.meta.url)
 const SNAPSHOTS = new URL("../../public/fixtures/parking/snapshots.json", import.meta.url)
 
+// The garages and their data time for a data mode and time: when the feed was read
+// (live), the recorded snapshot nearest to `time` (recorded; null when there is none),
+// or the fixture's. The live city state (T9) takes its recorded-mode time from here.
+export async function parkingSnapshot(options: {
+  mode: "fixture" | "recorded" | "live"
+  time: string | null
+}): Promise<ParkingSnapshot | null> {
+  if (options.mode === "live") return live.current()
+  if (options.mode === "recorded") {
+    const file = JSON.parse(await readFile(SNAPSHOTS, "utf8")) as SnapshotFile
+    return nearestSnapshot(file, options.time)
+  }
+  return JSON.parse(await readFile(FIXTURE, "utf8")) as ParkingSnapshot
+}
+
 // The garages in the `CityState` shape (server/city-state.ts) for a data mode and
 // time, for the live city state (T9). All garages of the feed, also those outside
 // AREA: a garage just outside the centre is still an answer to "where do I park".
@@ -207,12 +222,7 @@ export async function garageStates(options: {
   mode: "fixture" | "recorded" | "live"
   time: string | null
 }): Promise<GarageState[]> {
-  if (options.mode === "live") return (await live.current()).garages
-  if (options.mode === "recorded") {
-    const file = JSON.parse(await readFile(SNAPSHOTS, "utf8")) as SnapshotFile
-    return nearestSnapshot(file, options.time)?.garages ?? []
-  }
-  return (JSON.parse(await readFile(FIXTURE, "utf8")) as ParkingSnapshot).garages
+  return (await parkingSnapshot(options))?.garages ?? []
 }
 
 export function parkingRoute(source: { current(): Promise<ParkingSnapshot> }): Route {

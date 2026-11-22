@@ -8,12 +8,17 @@
 // template questions), and says so plainly when it has none for a question. The key
 // never leaves this process: the browser gets the answer, never the request.
 //
+// Only JSON from the app's own page is answered (a paid question per request): a
+// body sent as anything but application/json is refused before it is read, and so is
+// a request from another site's page (see sameOriginOrAllowed).
+//
 // After changing a prompt or the fixture, record every question again (needs the
 // key; the file is rewritten with exactly these questions, so stale answers go):
 //
 //   node server/routes/ask.ts --record park:gravensteen busy:now drive:coupure~portus-ganda
 
 import { readFile, writeFile } from "node:fs/promises"
+import type { IncomingMessage } from "node:http"
 import process, { env } from "node:process"
 import { fileURLToPath } from "node:url"
 import {
@@ -33,6 +38,7 @@ import { ORIGIN, toLocal, type LatLon } from "../../src/geo.ts"
 import { readJson, sendJson, type Route } from "../api.ts"
 import type { CityState, CityStateProvider, GarageState } from "../city-state.ts"
 import { fixtureCityState } from "../city-state-fixture.ts"
+import { CityStateError, modeCityState, type LiveCityState } from "../city-state-live.ts"
 import {
   DECISIONS_MODEL,
   DECISIONS_URL,
@@ -53,6 +59,10 @@ const CACHE_MAX = 200
 const CENTRE_RADIUS_M = 1_500
 // How many garages a parking question offers, nearest first.
 const PARK_GARAGES = 3
+
+// What the route answers: the panel's AskAnswer, plus a line about the data when the
+// city state has one (for example "Bolt bikes left out: …", from the live provider).
+export type AskReply = AskAnswer & { notice?: string }
 
 export class AskError extends Error {
   status: number
@@ -255,8 +265,8 @@ export function parkAt(garage: string): string {
 export function answerFrom(
   plan: AskPlan,
   response: DecisionResponse,
-  meta: { source: AskAnswer["source"]; dataTime: string; ms: number },
-): AskAnswer {
+  meta: { source: AskAnswer["source"]; dataTime: string; ms: number; notice?: string },
+): AskReply {
   const answer = response.answers[0]
   if (answer == null || answer.type === "refusal") throw new AskError(502, "The Decisions API declined to answer this question.")
   const base = { ask: plan.ask, question: plan.question, kind: plan.kind, ...meta }
@@ -341,11 +351,49 @@ export type AskOptions = {
   // The Decisions API client; tests pass a fake one. It must stop when `signal` aborts.
   decide?: (request: DecisionRequest, options: { apiKey: string; signal: AbortSignal }) => Promise<DecisionResponse>
   timeoutMs?: number
+  // The proxy hosts whose pages may ask (GHENT_LIVE_ALLOWED_HOSTS), read on each request.
+  allowedHosts?: () => readonly string[]
 }
 
-export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Partial<AskRequest>): Promise<AskAnswer> } {
+// GHENT_LIVE_ALLOWED_HOSTS, parsed as vite.config.ts parses it.
+export function parseAllowedHosts(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter((h) => h !== "")
+}
+
+// application/json, with or without parameters ("; charset=utf-8"). A browser sends
+// text/plain or a form cross-site without asking the server first; JSON it does not.
+export function isJsonRequest(req: Pick<IncomingMessage, "headers">): boolean {
+  return req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() === "application/json"
+}
+
+// A request from the app's own page: its Origin names the host it was sent to (Vite
+// has checked that Host header before any route runs), or a proxy host named in
+// GHENT_LIVE_ALLOWED_HOSTS (a leading "." allows its subdomains, as in Vite). No
+// Origin at all is not a web page (curl, a script, the tests) and is let through;
+// `Origin: null` (a sandboxed frame, a file) is foreign.
+export function sameOriginOrAllowed(req: Pick<IncomingMessage, "headers">, allowedHosts: readonly string[]): boolean {
+  const origin = req.headers.origin
+  if (origin == null) return true
+  let url: URL
+  try {
+    url = new URL(origin)
+  } catch {
+    return false
+  }
+  if (url.host !== "" && url.host === req.headers.host?.toLowerCase()) return true
+  return allowedHosts.some((entry) => {
+    const host = entry.toLowerCase()
+    return host.startsWith(".") ? url.hostname === host.slice(1) || url.hostname.endsWith(host) : url.hostname === host
+  })
+}
+
+export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Partial<AskRequest>): Promise<AskReply> } {
   const provider = options.provider ?? fixtureCityState
   const apiKey = options.apiKey ?? (() => env.OPENAI_API_KEY)
+  const allowedHosts = options.allowedHosts ?? (() => parseAllowedHosts(env.GHENT_LIVE_ALLOWED_HOSTS))
   const ask = options.decide ?? decideLive
   const cache = new Map<string, { at: number; response: DecisionResponse }>()
   // One upstream call per question and data at a time: a shared view opened twice
@@ -353,7 +401,7 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
   const inflight = new Map<string, Promise<DecisionResponse>>()
   let recordings: Promise<Recordings> | null = null
 
-  async function answer(body: Partial<AskRequest>): Promise<AskAnswer> {
+  async function answer(body: Partial<AskRequest>): Promise<AskReply> {
     const started = performance.now()
     const question = parseAsk(typeof body.ask === "string" ? body.ask : null)
     if (question == null) {
@@ -361,10 +409,24 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
     }
     const mode = body.mode === "recorded" || body.mode === "live" ? body.mode : "fixture"
     const time = typeof body.time === "string" && !Number.isNaN(Date.parse(body.time)) ? body.time : null
-    const state = await provider.current({ mode, time })
+    // A live provider may add a `notice` to the state; CityState itself has none.
+    let state: LiveCityState
+    try {
+      state = await provider.current({ mode, time })
+    } catch (error) {
+      if (error instanceof AskError) throw error
+      // Any other error's message may name a file or host; only a CityStateError's is passed on.
+      throw new AskError(502, error instanceof CityStateError ? error.message : "Could not read the city's data.")
+    }
     const plan = planAsk(question, state)
     const key = recordingKey(plan.request)
-    const meta = (source: AskAnswer["source"]) => ({ source, dataTime: state.time, ms: Math.round(performance.now() - started) })
+    const notice = state.notice
+    const meta = (source: AskAnswer["source"]) => ({
+      source,
+      dataTime: state.time,
+      ms: Math.round(performance.now() - started),
+      ...(notice == null ? {} : { notice }),
+    })
 
     const hit = cache.get(key)
     if (hit != null && Date.now() - hit.at < CACHE_TTL_MS) return answerFrom(plan, hit.response, meta("cached"))
@@ -410,6 +472,15 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
     path: "/api/ask",
     ask: answer,
     async handle(req, res) {
+      // Both checks come before the body is read: a refused request costs nothing.
+      if (!isJsonRequest(req)) {
+        const failure: AskFailure = { ask: "", question: null, error: "Send the question as JSON (Content-Type: application/json)." }
+        return sendJson(res, 415, failure)
+      }
+      if (!sameOriginOrAllowed(req, allowedHosts())) {
+        const failure: AskFailure = { ask: "", question: null, error: "Only the app's own page can ask." }
+        return sendJson(res, 403, failure)
+      }
       let body: Partial<AskRequest>
       try {
         const parsed = await readJson<unknown>(req, 4 * 1024)
@@ -435,10 +506,13 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
   }
 }
 
-export default createAskRoute()
+// Fixture mode answers from T7's fixture city state (so the committed recordings keep
+// answering offline); live and recorded mode from the live one (server/city-state-live.ts).
+export default createAskRoute({ provider: modeCityState })
 
 // node server/routes/ask.ts --record <ask> [<ask> …]: ask the Decisions API each
-// question on the fixture city state and write the answers, all in one file.
+// question on the fixture city state and write the answers, all in one file. It
+// always uses the fixture state, whatever the default route reads.
 async function record(asks: string[]): Promise<void> {
   const secret = env.OPENAI_API_KEY
   if (secret == null || secret === "") throw new Error("OPENAI_API_KEY is not set")

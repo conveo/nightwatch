@@ -33,7 +33,9 @@ declare global {
 const canvas = document.querySelector<HTMLCanvasElement>("#scene")!
 const status = document.querySelector<HTMLElement>("#status")!
 
-const renderer = new WebGLRenderer({ canvas, antialias: true })
+// A stencil buffer: the water marks its pixels there, so the zones drawn on the ground
+// leave the river in its own colour (src/layers/ground.ts, circulation.ts).
+const renderer = new WebGLRenderer({ canvas, antialias: true, stencil: true })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.setSize(window.innerWidth, window.innerHeight, false)
 
