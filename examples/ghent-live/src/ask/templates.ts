@@ -127,6 +127,9 @@ export type AskAnswer = {
   source: "live" | "recorded" | "cached"
   dataTime: string
   ms: number
+  // A line about the data behind the answer, for example a feed left out because it
+  // is stale (server/city-state-live.ts); absent when there is nothing to say.
+  notice?: string
 }
 
 export type AskFailure = { ask: string; question: string | null; error: string }

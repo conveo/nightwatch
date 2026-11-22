@@ -1,5 +1,6 @@
 import { Vector3, type PerspectiveCamera } from "three"
 import { toLocal } from "../geo.ts"
+import { beamOpacity } from "../layers/origin.ts"
 import { PLACES } from "../places.ts"
 
 // Name labels for the landmarks in src/places.ts, drawn as HTML over the scene so the
@@ -21,6 +22,25 @@ export const LABEL_HEIGHT_M: Readonly<Record<string, number>> = {
   graslei: 15,
   "sint-michielsbrug": 8,
   vrijdagmarkt: 5,
+}
+
+// Where a tower's label and body stand (x east, z south, metres from the Belfry), when
+// that differs from the place's coordinates: those are the Lichtplan's points, at a
+// church's door, while the buildings layer draws the towers here (the centres of the
+// tower outlines in public/fixtures/buildings.json). Sint-Niklaas' door is 44 m from
+// its tower, so its stem would point at an empty street beside the Belfry.
+export const LABEL_ANCHOR_M: Readonly<Record<string, readonly [number, number]>> = {
+  belfort: [-11.8, 3.4],
+  "sint-niklaas": [-144, -30.8],
+  "sint-baafs": [108.1, 65.9],
+}
+
+// While the base's beam is drawn (a view from the air), the Belfry's label rides at
+// its top, clear of the three towers' tops, which then read on their own; seen from
+// the street the beam is gone and the label sits just above the spire again.
+export const BEAM_TOP_M = 160
+export function belfryLabelHeight(cameraHeight: number): number {
+  return beamOpacity(cameraHeight) > 0.3 ? BEAM_TOP_M : LABEL_HEIGHT_M.belfort!
 }
 
 // The label text: the short Dutch name a Ghent audience uses (the presets' names);
@@ -49,14 +69,16 @@ export const LABEL_ORDER: readonly string[] = [
 // about as wide as the landmark: the cathedral and the Belfry with its cloth hall are
 // long buildings); a tower also has a shaft up to its top. The Belfry has a second,
 // thin shaft for the base's marker there, a red ring (radius 34 m) and beam (160 m).
-export type Cylinder = { radius: number; height: number }
+// `beam` marks the base's beam: it stands on the scene origin, not on the tower, and
+// counts only while it is drawn (src/layers/origin.ts fades it out near the street).
+export type Cylinder = { radius: number; height: number; beam?: boolean }
 export type Body = { foot: number; shafts?: readonly Cylinder[] }
 export const BODIES: Readonly<Record<string, Body>> = {
   belfort: {
     foot: 55,
     shafts: [
       { radius: 8, height: 91 },
-      { radius: 2, height: 160 },
+      { radius: 2, height: BEAM_TOP_M, beam: true },
     ],
   },
   "sint-baafs": { foot: 60, shafts: [{ radius: 8, height: 81 }] },
@@ -207,7 +229,8 @@ export function mountLabels(root: HTMLElement, ctx: LabelsContext): void {
   }
   const places = [...PLACES].sort((a, b) => rank(a.slug) - rank(b.slug))
   const items = places.map((place) => {
-    const { x, z } = toLocal(place)
+    const local = toLocal(place)
+    const [x, z] = LABEL_ANCHOR_M[place.slug] ?? [local.x, local.z]
     const button = document.createElement("button")
     button.type = "button"
     button.className = "ui-label"
@@ -224,14 +247,16 @@ export function mountLabels(root: HTMLElement, ctx: LabelsContext): void {
     const cylinders: Cylinder[] = [{ radius: body.foot, height: 0 }, ...(body.shafts ?? [])]
     // Each part of the body as the corners of its box (the foot first), projected
     // every frame.
-    const parts = cylinders.map(({ radius: r, height }) =>
-      [0, height].flatMap((y) => [
-        new Vector3(x - r, y, z),
-        new Vector3(x + r, y, z),
-        new Vector3(x, y, z - r),
-        new Vector3(x, y, z + r),
-      ]),
-    )
+    const parts = cylinders.map(({ radius: r, height, beam }) => {
+      const [cx, cz] = beam === true ? [0, 0] : [x, z]
+      const corners = [0, height].flatMap((y) => [
+        new Vector3(cx - r, y, cz),
+        new Vector3(cx + r, y, cz),
+        new Vector3(cx, y, cz - r),
+        new Vector3(cx, y, cz + r),
+      ])
+      return { corners, beam: beam === true }
+    })
     const world = new Vector3(x, LABEL_HEIGHT_M[place.slug] ?? 10, z)
     return { slug: place.slug, world, parts, button, dot, stem, w: 0, h: 0, last: "" }
   })
@@ -259,10 +284,12 @@ export function mountLabels(root: HTMLElement, ctx: LabelsContext): void {
     const h = window.innerHeight
     if (items.some((i) => i.w === 0)) measure()
     ctx.camera.updateMatrixWorld()
+    const beamShown = beamOpacity(ctx.camera.position.y) > 0.05
     const inputs = items.map((item): LabelInput => {
+      if (item.slug === "belfort") item.world.y = belfryLabelHeight(ctx.camera.position.y)
       const far = item.world.distanceTo(ctx.camera.position) >= MIN_LABEL_DISTANCE_M
       const anchor = far ? toScreen(item.world, w, h) : null
-      const boxes = item.parts.map((corners): Rect | null => {
+      const boxes = item.parts.filter((part) => beamShown || !part.beam).map(({ corners }): Rect | null => {
         const points = corners.map((p) => toScreen(p, w, h))
         if (points.some((p) => p == null)) return null
         const xs = points.map((p) => p!.x)

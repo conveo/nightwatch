@@ -6,10 +6,11 @@ circulation plan's sectors and its car-free core, the Lichtplan lighting the tow
 parking garages and shared bikes with live availability, and an "ask Ghent" panel
 that answers typed questions about the city's current state.
 
-This folder starts as a **base**: the app shell, the view state in the URL, one empty
-file per layer, and the checks every worker uses to verify its own ticket. The plan
-the fleet builds from is [plan/PLAN.md](plan/PLAN.md). It has the same shape as
-[nyc-live](../nyc-live/), the example built for an earlier run.
+It started as a **base** (the app shell, the view state in the URL, one empty file per
+layer and the checks every worker uses) and was built overnight from the tickets in
+[plan/PLAN.md](plan/PLAN.md), one layer per ticket. It has the same shape as
+[nyc-live](../nyc-live/), the example built for an earlier run. The morning test plan
+is [plan/review-plan.json](plan/review-plan.json) (see "Review it").
 
 ## Run it
 
@@ -65,8 +66,32 @@ runs a real screenshot's real answers in CI. A recording is stored under a hash 
 whole request, screenshot included, so a changed screenshot needs a new recording. A
 visual check costs about 2,000 input tokens, a fraction of a cent.
 
-The key is read on the server side only: by `check:visual` and, once the "ask Ghent"
-panel exists, by the dev server's `/api/ask`. It never reaches the browser.
+The key is read on the server side only, by `check:visual` and by the dev server's
+`/api/ask`. It never reaches the browser.
+
+`window.__ghentLive.stats()` in the browser console reports the last frame's draw
+calls and triangles and the GPU objects held. With every layer on, the default view
+draws about 70 calls and 50,000 triangles (63,000 with the live bike feeds), and the
+page holds about 20 MB of JavaScript heap.
+
+## Ask Ghent
+
+The panel on the right asks the dev server's `/api/ask`, which turns the question and
+the city's current state into one Decisions API request. With no question the panel
+folds to a small **Ask Ghent** button; on a phone it opens between the controls on the
+left and the preset bar. In fixture mode the city state is the committed sample
+([server/city-state-fixture.ts](server/city-state-fixture.ts)), so the recorded
+answers in [server/ask-recordings.json](server/ask-recordings.json) replay without a
+key. In live and recorded mode it comes from
+[server/city-state-live.ts](server/city-state-live.ts): the parking garages (the same
+data as `/api/parking`), the shared-bike stations (`/api/bikes`), the circulation
+plan's sector names and the places in [src/places.ts](src/places.ts). Bolt's
+availability is left out when the feed's own report time is more than an hour old,
+and the answer says so.
+
+`/api/ask` answers only JSON posts (`Content-Type: application/json`) whose `Origin`
+is the app's own or a host in `GHENT_LIVE_ALLOWED_HOSTS`, so another website cannot
+spend the key's budget; a request with no `Origin` (curl, a script) is accepted.
 
 ## Review it
 
@@ -126,9 +151,9 @@ CHROME_FLAGS=--no-sandbox node scripts/review-e2e.ts --env-file <file>    # wher
 | `GHENT_LIVE_PORT` | `5280` | Dev server port (preview uses the next one). Give each worker its own. |
 | `GHENT_LIVE_CDP` | none | A shared Chrome's DevTools URL, from `pnpm browser`. |
 | `GHENT_LIVE_CDP_PORT` | `9343` | Port for `pnpm browser`. |
-| `GHENT_LIVE_ALLOWED_HOSTS` | none | Extra `Host` names the dev server accepts, comma separated, for a proxy such as `tailscale serve`. The server listens on 127.0.0.1 only. |
+| `GHENT_LIVE_ALLOWED_HOSTS` | none | Extra `Host` names the dev server accepts, comma separated, for a proxy such as `tailscale serve`; `/api/ask` accepts them as an `Origin` too. The server listens on 127.0.0.1 only. |
 | `CHROME` | auto | A Chrome or Chromium binary, if the search does not find one. |
-| `OPENAI_API_KEY` | none | For `check:visual` and `/api/ask`. |
+| `OPENAI_API_KEY` | none | For `check:visual` and `/api/ask` (without it, `/api/ask` replays its recorded answers). |
 | `GHENT_LIVE_OVERLAY` | none | The reviewer overlay's server (`http://127.0.0.1:4858`). The dev server then adds the overlay to the page and forwards it on the app's own origin. |
 
 ## Data

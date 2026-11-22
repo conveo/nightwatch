@@ -32,9 +32,11 @@ import type { Layer, LayerContext } from "./types.ts"
 // /api/parking (server/routes/parking.ts) every minute; the browser never fetches
 // the city's feed itself.
 
-// 600 places stand 90 m tall, as tall as the Belfry: clearly above a typical block of
-// 10 to 20 m, so the columns read once the buildings stand around them.
-export const METRES_PER_PLACE = 0.15
+// 600 places stand 30 m tall, a third of the Belfry: above a typical block of 10 to
+// 20 m, so the columns read among the buildings, while the three towers stay the tall
+// things on the skyline (at 0.15 m a place the Vrijdagmarkt's column stood as tall as
+// the Belfry right behind it in the default view).
+export const METRES_PER_PLACE = 0.05
 export const COLUMN_RADIUS_M = 15
 export const STALE_AFTER_MS = 15 * 60_000
 export const REFRESH_MS = 60_000

@@ -8,6 +8,7 @@ import {
   Mesh,
   MeshLambertMaterial,
   PlaneGeometry,
+  ReplaceStencilOp,
   SRGBColorSpace,
   ShapeUtils,
   Vector2,
@@ -54,6 +55,9 @@ const COLORS = {
   waterNight: 0x0d2a52,
   quay: 0x4b4f5a,
 }
+// The water marks its pixels with this value in the stencil buffer, so overlays on the
+// ground (the circulation zones) leave the Leie and the Schelde in their own colour.
+export const WATER_STENCIL_REF = 1
 // The texture's resolution: about 2.8 pixels per metre over the whole area.
 const TEXTURE_MAX_PX = 4096
 // The width of the outline that closes slivers between neighbouring streets (metres).
@@ -481,7 +485,12 @@ function surroundGeometry(area: Rect, margin: number): BufferGeometry {
 export function createGroundLayer(): Layer {
   const group = new Group()
   group.name = "ground"
-  const waterMaterial = new MeshLambertMaterial({ color: COLORS.water })
+  const waterMaterial = new MeshLambertMaterial({
+    color: COLORS.water,
+    stencilWrite: true,
+    stencilRef: WATER_STENCIL_REF,
+    stencilZPass: ReplaceStencilOp,
+  })
   const surroundMaterial = new MeshLambertMaterial({ color: new Color(COLORS.land) })
   let landMaterial: MeshLambertMaterial | null = null
   return {
@@ -501,6 +510,9 @@ export function createGroundLayer(): Layer {
       land.rotation.x = -Math.PI / 2
       land.position.set((area.minX + area.maxX) / 2, 0, (area.minZ + area.maxZ) / 2)
       land.name = "land"
+      // Drawn before the water, so a bridge over the river hides the water under it and
+      // the stencil mark stays on the open water only.
+      land.renderOrder = -1
 
       const surround = new Mesh(surroundGeometry(area, 6000), surroundMaterial)
       surround.name = "surround"

@@ -37,10 +37,21 @@ const SELECTED_COLOR = 0xffffff
 // Bars stay thin and below the shortest parking garage column inside AREA (T5: 15 m
 // radius, 0.15 m per place, 22 m for the smallest). A station with no bikes still
 // shows, as a short post.
-export const BAR_WIDTH_M = 1
+export const BAR_WIDTH_M = 0.6
 export const EMPTY_BAR_M = 6
 export const METRES_PER_BIKE = 3.5
 export const MAX_BAR_M = 20
+// Seen from the air the bars stand between buildings that are taller than most of
+// them, so a fainter copy is drawn through the roofs; it fades in as the camera rises
+// from THROUGH_GONE_M to THROUGH_FULL_M (camera height), and a street-level view sees
+// only the bars in front of it.
+export const THROUGH_GONE_M = 30
+export const THROUGH_FULL_M = 60
+const THROUGH_OPACITY = 0.45
+export function throughOpacity(cameraHeight: number): number {
+  const t = (cameraHeight - THROUGH_GONE_M) / (THROUGH_FULL_M - THROUGH_GONE_M)
+  return THROUGH_OPACITY * Math.max(0, Math.min(1, t))
+}
 // Thin bars are hard to hit with a click, so picking uses wider, invisible boxes.
 const PICK_WIDTH_M = 9
 const PICK_MIN_HEIGHT_M = 12
@@ -128,6 +139,7 @@ export function createBikesLayer(): Layer {
   const unit = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
   // Unlit, so an operator's colour reads the same on every side, by day and by night.
   const material = new MeshBasicMaterial()
+  const throughMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0, depthTest: false, depthWrite: false })
   const pickMaterial = new MeshBasicMaterial()
 
   let mode: DataMode = "fixture"
@@ -135,6 +147,7 @@ export function createBikesLayer(): Layer {
   let answer: BikesAnswer | null = null
   let drawn: BikeStationState[] = []
   let bars: InstancedMesh | null = null
+  let through: InstancedMesh | null = null
   let pickBoxes: InstancedMesh | null = null
 
   // Positions, sizes and colours of every bar; the selected one is white and wider.
@@ -168,7 +181,7 @@ export function createBikesLayer(): Layer {
   function draw(next: BikesAnswer): void {
     answer = next
     drawn = next.stations.filter((s) => inArea(s))
-    for (const mesh of [bars, pickBoxes]) {
+    for (const mesh of [bars, through, pickBoxes]) {
       if (mesh == null) continue
       group.remove(mesh)
       mesh.dispose()
@@ -176,12 +189,22 @@ export function createBikesLayer(): Layer {
     const capacity = Math.max(1, drawn.length)
     bars = new InstancedMesh(unit, material, capacity)
     bars.name = "bike-bars"
+    // The see-through copy shares the bars' positions and colours.
+    through = new InstancedMesh(unit, throughMaterial, capacity)
+    through.name = "bike-bars-through"
+    through.renderOrder = 5
+    through.frustumCulled = false
+    through.onBeforeRender = (_renderer, _scene, camera) => {
+      throughMaterial.opacity = throughOpacity(camera.position.y)
+    }
     pickBoxes = new InstancedMesh(unit, pickMaterial, capacity)
     pickBoxes.name = "bike-pick"
     pickBoxes.visible = false
-    bars.count = pickBoxes.count = drawn.length
+    bars.count = through.count = pickBoxes.count = drawn.length
     place()
-    group.add(bars, pickBoxes)
+    through.instanceMatrix = bars.instanceMatrix
+    through.instanceColor = bars.instanceColor
+    group.add(bars, through, pickBoxes)
   }
 
   return {

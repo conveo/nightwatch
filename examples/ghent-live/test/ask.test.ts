@@ -10,7 +10,16 @@ import { loadRoutes, routesMiddleware, type Route } from "../server/api.ts"
 import type { CityState } from "../server/city-state.ts"
 import { FIXTURE_CITY_STATE } from "../server/city-state-fixture.ts"
 import { recordingKey, type DecisionRequest, type DecisionResponse } from "../server/decisions.ts"
-import { AskError, createAskRoute, parkAt, planAsk, readRecordings } from "../server/routes/ask.ts"
+import {
+  AskError,
+  createAskRoute,
+  isJsonRequest,
+  parkAt,
+  parseAllowedHosts,
+  planAsk,
+  readRecordings,
+  sameOriginOrAllowed,
+} from "../server/routes/ask.ts"
 
 const noKey = () => undefined
 
@@ -18,9 +27,15 @@ async function serve(route: Route) {
   const middleware = routesMiddleware([route])
   const server = createServer((req, res) => middleware(req, res, () => res.writeHead(404).end()))
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-  const post = async (body: unknown) => {
-    const res = await fetch(`${base}/api/ask`, { method: "POST", body: JSON.stringify(body) })
+  const host = `127.0.0.1:${(server.address() as AddressInfo).port}`
+  const base = `http://${host}`
+  // As the panel sends it: JSON, from the app's own page unless `headers` say otherwise.
+  const post = async (body: unknown, headers: Record<string, string> = {}) => {
+    const res = await fetch(`${base}/api/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    })
     return { status: res.status, text: await res.text() }
   }
   const close = () =>
@@ -28,7 +43,7 @@ async function serve(route: Route) {
       server.closeAllConnections()
       server.close(() => resolve())
     })
-  return { post, close }
+  return { post, close, host, base }
 }
 
 test("slugs follow the contract: lower case, ASCII, words joined by -", () => {
@@ -295,6 +310,82 @@ test("the same question asked twice at once calls the API once", async () => {
   assert.equal(b.answer, "No")
   assert.equal((await route.ask({ ask: "busy:now" })).source, "cached")
   assert.equal(calls, 1)
+})
+
+test("only JSON is read: text/plain or a form is a 415 before any paid call", async () => {
+  let calls = 0
+  const fake = async (request: DecisionRequest): Promise<DecisionResponse> => {
+    calls++
+    return { model: "fake", answers: [{ type: "predicate", name: request.questions[0]!.name, probability: 0.9 }] }
+  }
+  const { post, close } = await serve(createAskRoute({ apiKey: () => "sk-test", decide: fake, allowedHosts: () => [] }))
+  try {
+    // What another site's page can send without a preflight: a "simple" request.
+    for (const type of ["text/plain", "text/plain;charset=UTF-8", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"]) {
+      const res = await post({ ask: "busy:now" }, { "Content-Type": type, Origin: "https://evil.example" })
+      assert.equal(res.status, 415, type)
+      assert.match((JSON.parse(res.text) as AskFailure).error, /application\/json/)
+    }
+    assert.equal((await post({ ask: "busy:now" }, { "Content-Type": "text/plain" })).status, 415)
+    assert.equal(calls, 0)
+    // Parameters are fine.
+    assert.equal((await post({ ask: "busy:now" }, { "Content-Type": "application/json; charset=utf-8" })).status, 200)
+    assert.equal(calls, 1)
+  } finally {
+    await close()
+  }
+})
+
+test("a request from another site's page is a 403; the app's own page and scripts are answered", async () => {
+  let calls = 0
+  const fake = async (request: DecisionRequest): Promise<DecisionResponse> => {
+    calls++
+    return { model: "fake", answers: [{ type: "predicate", name: request.questions[0]!.name, probability: 0.9 }] }
+  }
+  let allowed: string[] = []
+  const { post, close, base } = await serve(createAskRoute({ apiKey: () => "sk-test", decide: fake, allowedHosts: () => allowed }))
+  try {
+    for (const origin of ["https://evil.example", "null", "http://localhost:5173", "not a url"]) {
+      const res = await post({ ask: "busy:now" }, { Origin: origin })
+      assert.equal(res.status, 403, origin)
+      assert.match((JSON.parse(res.text) as AskFailure).error, /own page/)
+    }
+    assert.equal(calls, 0)
+    // The app's own page (Origin is the host it was sent to), and no Origin at all.
+    assert.equal((await post({ ask: "busy:now" }, { Origin: base })).status, 200)
+    assert.equal((await post({ ask: "busy:now" })).status, 200)
+    // A proxy in front of the loopback server, named in GHENT_LIVE_ALLOWED_HOSTS.
+    assert.equal((await post({ ask: "busy:now" }, { Origin: "https://ghent.proxy.example" })).status, 403)
+    allowed = ["ghent.proxy.example"]
+    assert.equal((await post({ ask: "busy:now" }, { Origin: "https://ghent.proxy.example" })).status, 200)
+  } finally {
+    await close()
+  }
+})
+
+test("the origin check: same host, allowed proxy hosts, and nothing else", () => {
+  const req = (headers: Record<string, string>) => ({ headers })
+  const proxy = "ghent.proxy.example"
+  // A proxy that forwards its own Host header.
+  assert.ok(sameOriginOrAllowed(req({ origin: `https://${proxy}`, host: proxy }), []))
+  // A proxy that sends the loopback Host, with the proxy in the allowed list.
+  assert.ok(sameOriginOrAllowed(req({ origin: `https://${proxy}`, host: "127.0.0.1:5280" }), [proxy]))
+  assert.ok(!sameOriginOrAllowed(req({ origin: `https://${proxy}`, host: "127.0.0.1:5280" }), []))
+  // A leading "." allows subdomains, as in Vite.
+  assert.ok(sameOriginOrAllowed(req({ origin: `https://${proxy}`, host: "127.0.0.1:5280" }), [".proxy.example"]))
+  assert.ok(!sameOriginOrAllowed(req({ origin: "https://proxy.example.evil", host: "127.0.0.1:5280" }), [".proxy.example"]))
+  // Port and host must both match.
+  assert.ok(sameOriginOrAllowed(req({ origin: "http://127.0.0.1:5280", host: "127.0.0.1:5280" }), []))
+  assert.ok(!sameOriginOrAllowed(req({ origin: "http://127.0.0.1:5281", host: "127.0.0.1:5280" }), []))
+  assert.ok(!sameOriginOrAllowed(req({ origin: "http://evil.example", host: "127.0.0.1:5280" }), []))
+  assert.ok(!sameOriginOrAllowed(req({ origin: "null", host: "127.0.0.1:5280" }), [proxy]))
+  assert.ok(sameOriginOrAllowed(req({ host: "127.0.0.1:5280" }), []))
+
+  assert.deepEqual(parseAllowedHosts(` ${proxy} , ,other.example,`), [proxy, "other.example"])
+  assert.deepEqual(parseAllowedHosts(undefined), [])
+  assert.ok(isJsonRequest(req({ "content-type": "Application/JSON; charset=utf-8" })))
+  assert.ok(!isJsonRequest(req({ "content-type": "application/json-patch+json" })))
+  assert.ok(!isJsonRequest(req({})))
 })
 
 test("the route is mounted with the others", async () => {

@@ -9,7 +9,9 @@ aside#ask.ask-panel {
   --ask-soft: #ffffff;
   top: 16px;
   right: 16px;
-  width: min(560px, calc(100vw - 32px));
+  /* Narrow enough that a label beside the towers on the right of the street-level
+     view still fits between them and the panel. */
+  width: min(440px, calc(100vw - 32px));
   max-height: calc(100vh - 140px);
   overflow-y: auto;
   display: flex;
@@ -24,6 +26,22 @@ aside#ask.ask-panel {
 }
 
 aside#ask.ask-panel[hidden] {
+  display: none;
+}
+
+/* Folded (no question): only the title, as a button that opens the panel. */
+aside#ask.ask-panel[data-state="closed"] {
+  width: auto;
+  padding: 6px 12px;
+}
+
+.ask-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ask-body[hidden] {
   display: none;
 }
 
@@ -60,6 +78,23 @@ aside#ask.ask-panel[hidden] {
 .ask-panel button:hover,
 .ask-panel button:focus-visible {
   background: rgba(232, 236, 244, 0.18);
+}
+
+/* The title is the button that opens and folds the panel; it reads as the title. */
+.ask-panel .ask-toggle {
+  min-height: 48px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--ask-accent);
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.ask-panel .ask-toggle:hover,
+.ask-panel .ask-toggle:focus-visible {
+  background: transparent;
+  text-decoration: underline;
 }
 
 .ask-clear {
@@ -113,6 +148,11 @@ aside#ask.ask-panel[hidden] {
 .ask-pending {
   font-size: 28px;
   color: var(--ask-soft);
+}
+
+.ask-notice {
+  font-size: 24px;
+  color: #ffd9a0;
 }
 
 .ask-error {
@@ -192,15 +232,26 @@ aside#ask.ask-panel[hidden] {
   font-weight: 600;
 }
 
-/* On a phone the panel sits under the title and leaves the map its lower half. */
+/* On a phone the panel folds to a small button beside the title. Open, it fills the
+   space between the Day/Night and layer controls and the preset bar (panel.ts sets
+   its top and height), so it never covers either. */
 @media (max-width: 760px) {
   aside#ask.ask-panel {
-    top: 96px;
     left: 16px;
     right: 16px;
     width: auto;
     max-height: 50vh;
     padding: 14px 16px;
+    font-size: 24px;
+  }
+
+  aside#ask.ask-panel[data-state="closed"] {
+    top: 16px;
+    left: auto;
+    padding: 4px 10px;
+  }
+
+  .ask-panel .ask-toggle {
     font-size: 24px;
   }
 

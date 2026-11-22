@@ -108,6 +108,11 @@ const FLOOD_AIM_Y_M = 45
 const BRIDGE_LIGHT_Y_M = 8
 // The walk lies just above the circulation plan's zones (GROUND_OVERLAY_Y_M).
 const PATH_Y_M = GROUND_OVERLAY_Y_M + 0.2
+// The see-through copy of the night walk: full from WALK_THROUGH_FULL_M of camera
+// height up, none below WALK_THROUGH_GONE_M.
+const WALK_THROUGH_OPACITY = 0.5
+const WALK_THROUGH_GONE_M = 30
+const WALK_THROUGH_FULL_M = 60
 const NIGHT_PATH_WIDTH_M = 14
 const DAY_PATH_WIDTH_M = 1.2
 const DAY_DASH_PERIOD_M = 8
@@ -635,7 +640,20 @@ export function createLichtplanLayer(): Layer {
       }),
     )
     glowPath.name = "lichtplan-walk-night"
-    night.add(glowPath)
+    // From the air the walk runs between buildings that hide most of it, so a fainter
+    // copy is drawn through the roofs; it fades out as the camera comes down to the
+    // street, where the walk shows on its own.
+    const throughMaterial = (glowPath.material as MeshBasicMaterial).clone()
+    throughMaterial.depthTest = false
+    const throughPath = new Mesh(glowPath.geometry, throughMaterial)
+    throughPath.name = "lichtplan-walk-night-through"
+    throughPath.renderOrder = 4
+    throughPath.frustumCulled = false
+    throughPath.onBeforeRender = (_renderer, _scene, camera) => {
+      const t = (camera.position.y - WALK_THROUGH_GONE_M) / (WALK_THROUGH_FULL_M - WALK_THROUGH_GONE_M)
+      throughMaterial.opacity = WALK_THROUGH_OPACITY * Math.max(0, Math.min(1, t))
+    }
+    night.add(glowPath, throughPath)
 
     const dashes = dashTexture()
     // The ribbon's u runs in widths along it; one repeat of the texture is one dash

@@ -7,6 +7,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  NotEqualStencilFunc,
   PlaneGeometry,
   Quaternion,
   SRGBColorSpace,
@@ -18,6 +19,7 @@ import {
 import { AREA, GROUND_OVERLAY_Y_M } from "../constants.ts"
 import { toLocal } from "../geo.ts"
 import type { Light } from "../view-state.ts"
+import { WATER_STENCIL_REF } from "./ground.ts"
 import type { Layer } from "./types.ts"
 
 // The 2017 circulation plan: its sectors, the car-free area and the "knips" (the
@@ -424,12 +426,14 @@ export function zoneAt(data: CirculationData, p: XZ): string | null {
 // ---------------------------------------------------------------------------------
 // Colours: neighbouring sectors differ, and the car-free area has a colour of its own.
 
-// Bright hues that stay apart from the car-free gold and the knips' red. The greedy
+// Bright hues that stay apart from the car-free white and the knips' red. The greedy
 // colouring hands them out in this order; in AREA, sectors 0 and 1 face each other
 // across the Kuip, so each of them borders both 2 and 3: blues next to greens.
 export const SECTOR_COLOURS: readonly string[] = ["#4f8dff", "#b266ff", "#2fd27a", "#8fe04a", "#ff7ac8"]
-export const CAR_FREE_COLOUR = "#ffd04a"
-export const PEDESTRIAN_COLOUR = "#fff1b8"
+// The car-free core is a pale, neutral wash rather than a hue: the three towers stand
+// in it, drawn in warm gold by the buildings layer, and must stand out against it.
+export const CAR_FREE_COLOUR = "#eef2fa"
+export const PEDESTRIAN_COLOUR = "#ffffff"
 export const KNIP_COLOUR = 0xff2626
 
 type Bounds = Rect
@@ -602,7 +606,16 @@ export function postScale(cameraHeight: number): number {
 
 // The zones' texture: its longer side in pixels (about 1.4 px per metre over AREA).
 const TEXTURE_PX = 2048
-const ALPHA = { sector: 0.52, "car-free": 0.72, pedestrian: 0.72 } as const
+// Translucent enough that T2's streets and the buildings' footprints read through the
+// zones from above; the water is never covered (see the stencil test below).
+const ALPHA = { sector: 0.36, "car-free": 0.46, pedestrian: 0.46 } as const
+// At night the zones dim with the city, so the lit towers, not the pavement, are the
+// brightest thing in a street-level view.
+const NIGHT_DIM = 0.2
+// A zone's name gives way to a landmark's label (src/ui/labels.ts) or a panel it
+// would come closer to than this, so no two labels overlap.
+const LABEL_GAP_PX = 40
+const TAKEN_REFRESH_MS = 500
 // Labels show when the camera looks down at least this steeply (the y of its forward
 // vector), that is, when the zones are seen from above.
 const LABELS_BELOW_Y = -0.75
@@ -636,7 +649,7 @@ export function createCirculationLayer(): Layer {
   let currentScale = 0
   let camera: Camera | null = null
   let labelBox: HTMLDivElement | null = null
-  let labels: Array<{ slug: string; el: HTMLDivElement; at: Vector3 }> = []
+  let labels: Array<{ slug: string; el: HTMLDivElement; at: Vector3; w: number; h: number }> = []
 
   function paint(): void {
     if (data == null || canvas == null) return
@@ -727,15 +740,42 @@ export function createCirculationLayer(): Layer {
     labelBox.style.display = show ? "" : "none"
     if (!show) return
     const box = sceneCanvas.getBoundingClientRect()
+    const taken = takenBoxes()
     for (const label of labels) {
       const p = label.at.clone().project(cam)
-      const visible = p.z < 1 && Math.abs(p.x) < 0.98 && Math.abs(p.y) < 0.96
-      label.el.style.display = visible ? "" : "none"
-      if (!visible) continue
+      let visible = p.z < 1 && Math.abs(p.x) < 0.98 && Math.abs(p.y) < 0.96
       const x = box.left + ((p.x + 1) / 2) * box.width
       const y = box.top + ((1 - p.y) / 2) * box.height
+      if (visible) {
+        if (label.w === 0) {
+          label.el.style.display = ""
+          label.w = label.el.offsetWidth
+          label.h = label.el.offsetHeight
+        }
+        const r = { left: x - label.w / 2, right: x + label.w / 2, top: y - label.h / 2, bottom: y + label.h / 2 }
+        visible = !taken.some(
+          (t) => r.left < t.right + LABEL_GAP_PX && t.left < r.right + LABEL_GAP_PX && r.top < t.bottom + LABEL_GAP_PX && t.top < r.bottom + LABEL_GAP_PX,
+        )
+      }
+      label.el.style.display = visible ? "" : "none"
+      if (!visible) continue
       label.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`
     }
+  }
+
+  // The landmark labels on screen and the panels over the scene, in page pixels. They
+  // are read twice a second, not every frame (reading boxes forces a layout), as
+  // src/ui/controls.ts does for the landmark labels' own obstacles.
+  let taken: DOMRect[] = []
+  let takenAt = -Infinity
+  function takenBoxes(): DOMRect[] {
+    const now = performance.now()
+    if (now - takenAt < TAKEN_REFRESH_MS) return taken
+    takenAt = now
+    const landmarks = [...document.querySelectorAll<HTMLElement>(".ui-label")].filter((el) => el.style.visibility === "visible")
+    const panels = [...document.querySelectorAll<HTMLElement>("#hud, #ask, .ui-panel, .ui-presets")].filter((el) => !el.hidden)
+    taken = [...landmarks, ...panels].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
+    return taken
   }
 
   function markLabels(): void {
@@ -773,7 +813,7 @@ export function createCirculationLayer(): Layer {
         el.append(sub)
       }
       labelBox!.append(el)
-      return { slug: l.slug, el, at: new Vector3(l.at[0], GROUND_OVERLAY_Y_M, l.at[1]) }
+      return { slug: l.slug, el, at: new Vector3(l.at[0], GROUND_OVERLAY_Y_M, l.at[1]), w: 0, h: 0 }
     })
     // Before the HUD and the panels in the page, so they stay on top of the labels.
     const scene = document.querySelector("#scene")
@@ -806,7 +846,16 @@ export function createCirculationLayer(): Layer {
       paint()
       plane = new Mesh(
         new PlaneGeometry(w, h),
-        new MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false }),
+        new MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          depthWrite: false,
+          toneMapped: false,
+          // Never over the water, which marks its pixels in the stencil buffer.
+          stencilWrite: true,
+          stencilRef: WATER_STENCIL_REF,
+          stencilFunc: NotEqualStencilFunc,
+        }),
       )
       plane.name = "circulation-zones"
       plane.rotation.x = -Math.PI / 2
@@ -838,7 +887,7 @@ export function createCirculationLayer(): Layer {
       if (Math.abs(scale - currentScale) > currentScale * 0.02) placePosts(scale)
     },
     setLight(light: Light) {
-      if (plane != null) plane.material.opacity = light === "night" ? 0.85 : 1
+      if (plane != null) plane.material.color.setScalar(light === "night" ? NIGHT_DIM : 1)
     },
     pick(ray: Raycaster) {
       if (data == null || plane == null || !isShown(group)) return null

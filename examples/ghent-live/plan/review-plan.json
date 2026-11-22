@@ -1,0 +1,162 @@
+{
+  "title": "ghent-live · morning review",
+  "subtitle": "Ghent's historic centre in 3D, built overnight (master PR #36). Every step opens a view by its URL hash on the app you have open; the small committed samples load unless a step says **live**. Pin a note with **Reviewer → Add comment** wherever something looks wrong: the note carries the exact view.",
+  "features": [
+    {
+      "id": "stage",
+      "title": "The stage view: Street level at night",
+      "badge": "VERIFY",
+      "ticket": "T8 · T4 · T7 · T9 · #36",
+      "tag": "instant",
+      "url": "/#cam=-300,14,-29&tgt=-3.7,40.1,10.1&light=night&ask=park:gravensteen",
+      "intro": "The opening shot of the talk: from the Sint-Michielsbrug, the three towers in a row, lit, with a parking answer on the right.",
+      "steps": [
+        "Open the view. You stand on the bridge at eye height, looking east along the Korenmarkt.",
+        "Look for **Sint-Niklaas**, the **Belfort** (with its spire) and **Sint-Baafs**, left to right, each lit warm orange against a dark city, each with its name label.",
+        "The **Ask Ghent** panel on the right answers *Where should I park to reach Gravensteen?* with a garage and a percentage; the Sint-Baafs label stays visible beside it.",
+        "The street and the buildings stay dark; the towers are the brightest thing in the frame. No red beam stands in the sky."
+      ],
+      "pass": "Three lit towers with their three labels, and a parking answer in the panel, all readable from the back of a room."
+    },
+    {
+      "id": "buildings",
+      "title": "Buildings at their real heights",
+      "badge": "VERIFY",
+      "ticket": "T1 · #28",
+      "tag": "instant",
+      "url": "/#sel=bldg:7118570",
+      "intro": "The default view from the south-west, with the Belfry selected.",
+      "steps": [
+        "Open the view: dense blocks of buildings of different heights fill the centre.",
+        "The Belfry stands at the red ring, highlighted in magenta, its spire clearly above the roofs; a thin red beam rises from the ring.",
+        "Click any other building: it turns magenta and the URL's `sel` becomes `bldg:<number>`."
+      ],
+      "pass": "The Belfry rises clearly above the roofs at the red ring, and clicking a building selects it."
+    },
+    {
+      "id": "ground",
+      "title": "Ground, water and streets",
+      "badge": "VERIFY",
+      "ticket": "T2 · #27",
+      "tag": "instant",
+      "url": "/#cam=0,2200,1&tgt=0,0,0",
+      "intro": "The city from straight above, north up.",
+      "steps": [
+        "Open the view. The Leie and the Schelde run through the map as continuous blue bands, never covered by the coloured zones.",
+        "The streets form an irregular medieval pattern; no square grid shows anywhere.",
+        "Switch **Circulation** off in the Layers panel: the bare land, streets and water stay; switch it back on."
+      ],
+      "pass": "The rivers read as water through the zones, and the streets are the real, irregular street plan."
+    },
+    {
+      "id": "circulation",
+      "title": "The circulation plan",
+      "badge": "VERIFY",
+      "ticket": "T3 · #31",
+      "tag": "instant",
+      "url": "/#cam=0,2200,1&tgt=0,0,0&sel=sector:kuip",
+      "intro": "The 2017 circulation plan: sectors around a car-free core, and the knips where cars cannot pass.",
+      "steps": [
+        "Open the view. Coloured sectors surround a pale car-free core (**Kuip**, selected with a white outline); neighbouring sectors differ in colour.",
+        "Small red posts (the knips) stand on the sector borders.",
+        "Sector names (Coupure, Portus Ganda, Krook, …) show in large text and never overlap a landmark label."
+      ],
+      "pass": "Zones, the car-free core and the knips are all visible, and the streets still read through the zones."
+    },
+    {
+      "id": "lichtplan",
+      "title": "The Lichtplan by night and by day",
+      "badge": "VERIFY",
+      "ticket": "T4 · #33",
+      "tag": "instant",
+      "url": "/#cam=-90,170,470&tgt=-10,20,0&light=night",
+      "intro": "The city's night lighting: lit towers and a glowing walk.",
+      "steps": [
+        "Open the view. Warm lights shine on the towers and the facades; a glowing walk runs through the streets.",
+        "Click **Day** in the panel on the left: the walk becomes a thin dashed line with small markers, and nothing glows.",
+        "Click **Night** again: the lights come back."
+      ],
+      "pass": "At night the towers are lit and the walk glows; by day nothing glows."
+    },
+    {
+      "id": "parking",
+      "title": "Parking garages, live",
+      "badge": "VERIFY",
+      "ticket": "T5 · #34",
+      "tag": "live",
+      "url": "/#cam=420,310,-820&tgt=-150,30,30&sel=garage:vrijdagmarkt",
+      "intro": "One column per garage in the centre: its height is the capacity, its solid part the occupied places, its colour the share still free.",
+      "steps": [
+        "Open the view (samples). Columns of different heights stand in the city; the Vrijdagmarkt column is highlighted with a label giving its free places.",
+        "The columns stay well below the three towers.",
+        "Open the [live view](/#cam=420,310,-820&tgt=-150,30,30&sel=garage:vrijdagmarkt&mode=live): the page reloads with the city's current feed, and the status line under the title says so if the data is more than 15 minutes old."
+      ],
+      "pass": "Five garages show as partly filled columns, and the live view draws the current occupancy."
+    },
+    {
+      "id": "bikes",
+      "title": "Shared bikes, live",
+      "badge": "VERIFY",
+      "ticket": "T6 · #35",
+      "tag": "live",
+      "url": "/#cam=-230,110,370&tgt=0,0,-20",
+      "intro": "One thin bar per shared-bike station, its height the bikes available, one colour per operator (Donkey Republic orange, Bolt green).",
+      "steps": [
+        "Open the view (samples). Thin bars stand along the streets, also behind the roofs (drawn through them, fainter, from this height); most are short stubs.",
+        "Click a bar: it turns white and wider, and the URL's `sel` becomes `bikes:<operator>:<id>`.",
+        "Open the [live view](/#cam=-230,110,370&tgt=0,0,-20&mode=live): about 110 Donkey Republic and 700 Bolt stations inside the area; most Bolt stations show 0 bikes."
+      ],
+      "pass": "The bars read along the streets in two colours, and a click selects a station."
+    },
+    {
+      "id": "ask",
+      "title": "Ask Ghent",
+      "badge": "VERIFY",
+      "ticket": "T7 · T9 · #32",
+      "tag": "live",
+      "url": "/#cam=-212.1,230,252.8&tgt=0,40,0&ask=busy:now",
+      "intro": "Typed questions about the city's state, answered on the server; the key never reaches the browser.",
+      "steps": [
+        "Open the view: the panel answers *Is the centre busy right now?* with Yes or No and a percentage.",
+        {
+          "text": "Type this question in the panel and press **Ask**; the answer arrives within a second or two:",
+          "copy": [{ "kind": "prompt", "label": "Question", "text": "Can I drive from Coupure to Portus Ganda without leaving the R40 ring road?" }]
+        },
+        "Click **×**: the question clears and the panel folds to a small **Ask Ghent** button; click it to open the panel again.",
+        "Open the [live parking question](/#cam=-212.1,230,252.8&tgt=0,40,0&ask=park:gravensteen&mode=live): the answer names a garage drawn on the map and highlights it; if the Bolt feed is stale, a line in the panel says Bolt bikes were left out."
+      ],
+      "pass": "Each question gets an answer with a percentage, and a parking answer highlights a garage that is drawn."
+    },
+    {
+      "id": "controls",
+      "title": "Camera, labels and controls",
+      "badge": "VERIFY",
+      "ticket": "T8 · #30",
+      "tag": "instant",
+      "url": "/#cam=-100,850,60&tgt=-100,0,-140",
+      "intro": "Six camera presets with a smooth flight, layer switches, the day/night switch and landmark labels, all large enough for a projector and usable by touch.",
+      "steps": [
+        "Open the view (**From above**). Landmark labels name the Belfort, Sint-Baafs, Gravensteen and others; no two labels overlap, and none touches a panel.",
+        "Click each preset along the bottom: **Belfort**, **Graslei**, **Gravensteen**, **Sint-Baafs**, **Street level**. Each flight is smooth and never goes under the street.",
+        "Drag to orbit at Street level: the camera may look a little up at the towers but never sinks below the street.",
+        "The attribution line under the preset buttons stays readable."
+      ],
+      "pass": "Every preset flies smoothly to a readable view, and the labels never cover each other or the controls."
+    },
+    {
+      "id": "review",
+      "title": "Review in the app",
+      "badge": "VERIFY",
+      "ticket": "T10 · #29",
+      "tag": "instant",
+      "url": "/#cam=-250,420,620&tgt=0,0,0&sel=place:belfort&light=night",
+      "intro": "A note pinned here reaches the agent with the exact view and a screenshot.",
+      "steps": [
+        "Open the view: the default camera at night, the Belfry selected.",
+        "Click **Reviewer**, then **Add comment**, share the tab when the browser asks, click the red ring and send a short note.",
+        "The note is confirmed as sent; the agent replies with the view it opened from the note's URL."
+      ],
+      "pass": "The note arrives with its comment, the view's URL and a screenshot with the pin."
+    }
+  ]
+}
