@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { readFileSync, statSync } from "node:fs"
 import { test } from "node:test"
 import { Light, Ray, Raycaster, SpotLight, Vector3, type Object3D } from "three"
@@ -259,13 +260,15 @@ test("slots the towers cannot fill go to more bridges, and bridges never take mo
   assert.equal(chooseLitPoints(bridges).length, 8)
 })
 
-test("a tower's floodlight stands on the ground west-south-west of it and aims up at it; a bridge's light is over the deck", () => {
+test("a tower's floodlight stands west-south-west of it, lower than its top, and aims up at it; a bridge's light is over the deck", () => {
   const rig = lightRig(point(1, "Belfort", "Belfort", 0, 0))
   assert.equal(rig.type, "spot")
-  assert.ok(rig.position[0] < 0 && rig.position[2] > 0 && rig.position[1] < 3, `position ${rig.position}`)
+  assert.ok(rig.position[0] < 0 && rig.position[2] > 0, `position ${rig.position}`)
+  assert.ok(rig.position[0] < rig.position[2] * -2, "more west than south")
   assert.ok(Math.hypot(rig.position[0], rig.position[2]) > 20)
   assert.deepEqual([rig.target[0], rig.target[2]], [0, 0])
-  assert.ok(rig.target[1] > 10)
+  // Aimed up: the target is higher than the light, and both are below a tall tower's top.
+  assert.ok(rig.target[1] > rig.position[1] && rig.target[1] < 90, `target ${rig.target}`)
   const bridge = lightRig(point(2, "Brug", "Sint-Michielsbrug", -309, -19))
   assert.equal(bridge.type, "point")
   assert.deepEqual([bridge.position[0], bridge.position[2]], [-309, -19])
@@ -362,4 +365,34 @@ test("the fixture holds the Lichtplan inside the area, small", () => {
   assert.ok(data.lines.every((l) => l.points.every((p) => inRect(p, padded))))
   const belfry = data.points.find((p) => p.id === BELFORT)!
   assert.ok(Math.hypot(belfry.x, belfry.z) < 1, "the Belfry is the scene origin")
+})
+
+// --- Recorded visual checks ------------------------------------------------------------
+
+// test/fixtures/lichtplan.png (night, taken with the buildings of T1 in the scene) and
+// test/fixtures/lichtplan-day.png are real screenshots of the views in the check files,
+// and test/recordings/ holds the Decisions API's real answers for them, so these run
+// the whole command with no key and no network.
+function checkVisual(...args: string[]) {
+  const env = { ...process.env }
+  delete env.OPENAI_API_KEY
+  return spawnSync(process.execPath, ["scripts/check-visual.ts", ...args], { encoding: "utf8", env })
+}
+
+test("the recorded night screenshot passes its checks: warm lights on the towers, a glowing path", () => {
+  const run = checkVisual("test/fixtures/lichtplan.png", "checks/lichtplan.json", "--replay")
+  assert.equal(run.status, 0, run.stderr + run.stdout)
+  assert.equal(run.stdout.match(/^PASS /gm)?.length, 2, run.stdout)
+})
+
+test("the recorded day screenshot passes its negative control: no glowing path", () => {
+  const run = checkVisual("test/fixtures/lichtplan-day.png", "checks/lichtplan-day.json", "--replay")
+  assert.equal(run.status, 0, run.stderr + run.stdout)
+  assert.equal(run.stdout.match(/^PASS /gm)?.length, 1, run.stdout)
+})
+
+test("the night screenshot does not replay against the day checks (each recording is for its own screenshot)", () => {
+  const run = checkVisual("test/fixtures/lichtplan.png", "checks/lichtplan-day.json", "--replay")
+  assert.equal(run.status, 2)
+  assert.match(run.stderr, /no recorded answer/)
 })

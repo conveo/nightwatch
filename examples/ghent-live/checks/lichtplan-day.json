@@ -1,5 +1,5 @@
 {
-  "view": "#cam=-308,6,-26&tgt=-228.5,2.6,-17.2&mode=fixture",
+  "view": "#cam=-90,170,470&tgt=-10,20,0&mode=fixture",
   "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser, by day.",
   "checks": [
     {

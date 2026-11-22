@@ -10,11 +10,13 @@ import {
   Group,
   InstancedMesh,
   LinearFilter,
+  NearestFilter,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
   PointLight,
+  RepeatWrapping,
   RGBAFormat,
   RingGeometry,
   Sphere,
@@ -38,7 +40,7 @@ import type { Layer } from "./types.ts"
 // At night a few real lights (at most MAX_REAL_LIGHTS) floodlight the towers and
 // light the bridges, every other point glows as a warm sprite, and the walk is a
 // glowing ribbon at street level. By day the points are small markers and the walk a
-// thin line. The data does not change, so the fixture covers the whole area and
+// thin dashed line. The data does not change, so the fixture covers the whole area and
 // every data mode draws it.
 
 // A point in scene metres: x east, z south of the Belfry.
@@ -86,27 +88,29 @@ const COLORS = {
   glow: 0xffb25e,
   path: 0xffc070,
   marker: 0xd9a547,
-  dayPath: 0x9c8a63,
+  dayPath: 0x4a4339,
   selected: 0xfff1c2,
 }
 
 // Heights and sizes, in metres.
 const GLOW_Y_M = 7
 const GLOW_SIZE_M = 26
-const SOURCE_GLOW_SIZE_M = 12
 const PICK_Y_M = 6
 const PICK_RADIUS_M = 10
-// A tower's floodlight stands on the ground this far from the tower, on its
+// A tower's floodlight stands this far from the tower and this high up, on its
 // west-south-west side, which faces the Street-level view from the Sint-Michielsbrug
-// and the default view from the south-west, and aims at this height on the tower.
-const FLOOD_DISTANCE_M = 32
+// and the default view from the south-west. It aims at this height on the tower: from
+// there the light reaches the foot and the top of a 90 m tower about evenly.
+const FLOOD_DISTANCE_M = 90
+const FLOOD_Y_M = 35
 const FLOOD_DIRECTION: XZ = normalize([-0.92, 0.38])
-const FLOOD_AIM_Y_M = 30
-const BRIDGE_LIGHT_Y_M = 5
+const FLOOD_AIM_Y_M = 45
+const BRIDGE_LIGHT_Y_M = 8
 // The walk lies just above the circulation plan's zones (GROUND_OVERLAY_Y_M).
 const PATH_Y_M = GROUND_OVERLAY_Y_M + 0.2
 const NIGHT_PATH_WIDTH_M = 14
-const DAY_PATH_WIDTH_M = 1.6
+const DAY_PATH_WIDTH_M = 1.2
+const DAY_DASH_PERIOD_M = 8
 // Pieces of the walk shorter than this, left over from clipping to AREA, are dropped.
 const MIN_LINE_M = 10
 
@@ -439,8 +443,8 @@ export type LightRig = {
   target: [number, number, number]
 }
 
-// Where a lit point's light stands: a tower gets a floodlight on the ground beside it,
-// aimed up at it; a bridge a light just above its deck.
+// Where a lit point's light stands: a tower gets a floodlight across from it, aimed
+// up at it; a bridge a light above its deck.
 export function lightRig(p: LichtplanPoint): LightRig {
   if (poiKind(p) === "bridge") {
     return { id: p.id, type: "point", position: [p.x, BRIDGE_LIGHT_Y_M, p.z], target: [p.x, 0, p.z] }
@@ -448,7 +452,7 @@ export function lightRig(p: LichtplanPoint): LightRig {
   return {
     id: p.id,
     type: "spot",
-    position: [p.x + FLOOD_DIRECTION[0] * FLOOD_DISTANCE_M, 1, p.z + FLOOD_DIRECTION[1] * FLOOD_DISTANCE_M],
+    position: [p.x + FLOOD_DIRECTION[0] * FLOOD_DISTANCE_M, FLOOD_Y_M, p.z + FLOOD_DIRECTION[1] * FLOOD_DISTANCE_M],
     target: [p.x, FLOOD_AIM_Y_M, p.z],
   }
 }
@@ -502,10 +506,21 @@ function pathTexture(size = 64): DataTexture {
   const data = new Uint8Array(size * 4)
   for (let j = 0; j < size; j++) {
     const d = Math.abs((j + 0.5) / size - 0.5) * 2
-    const a = Math.min(1, Math.exp(-((d * 4.5) ** 2)) + 0.35 * (1 - d) ** 2)
+    const a = Math.min(1, Math.exp(-((d * 3.2) ** 2)) + 0.4 * (1 - d) ** 2)
     data.set([255, 255, 255, Math.round(a * 255)], j * 4)
   }
   return dataTexture(data, 1, size)
+}
+
+// By day the walk is dashed, like a walking route on a map, and dark: a solid or light
+// line on the dark ground reads as a lit one. A dash, then a gap, along the ribbon
+// (u); used as an alpha map with alphaTest, so the gaps are cut out.
+function dashTexture(): DataTexture {
+  const t = dataTexture(new Uint8Array([255, 255, 255, 255, 0, 0, 0, 255]), 2, 1)
+  t.magFilter = NearestFilter
+  t.minFilter = NearestFilter
+  t.wrapS = RepeatWrapping
+  return t
 }
 
 function dataTexture(data: Uint8Array, width: number, height: number): DataTexture {
@@ -581,31 +596,22 @@ export function createLichtplanLayer(): Layer {
     for (const p of points.filter((q) => lit.has(q.id))) {
       const rig = lightRig(p)
       if (rig.type === "spot") {
-        const spot = new SpotLight(warm, 12000, 260, 0.75, 0.55, 2)
+        const spot = new SpotLight(warm, 30000, 450, 0.62, 0.45, 2)
         spot.name = `lichtplan-light-${p.id}`
         spot.position.set(...rig.position)
         spot.target.position.set(...rig.target)
         lights.add(spot, spot.target)
       } else {
-        const lamp = new PointLight(warm, 2500, 160, 2)
+        const lamp = new PointLight(warm, 700, 160, 2)
         lamp.name = `lichtplan-light-${p.id}`
         lamp.position.set(...rig.position)
         lights.add(lamp)
       }
-      // The light's own glow: at the floodlight's foot, or over the bridge.
-      const source = new Sprite(glowMaterial)
-      source.position.set(rig.position[0], rig.type === "spot" ? 2.5 : rig.position[1], rig.position[2])
-      const size = rig.type === "spot" ? SOURCE_GLOW_SIZE_M : GLOW_SIZE_M
-      source.scale.set(size, size, 1)
-      source.userData.size = size
-      night.add(source)
-      if (rig.type === "point") glows.set(p.id, source)
     }
 
-    // Every point that has no real light glows on its own, and a lit tower gets a
-    // glow on its facade too, so it can be selected by its glow like the others.
+    // Every point glows a little above the street, the lit towers and bridges
+    // included, so each shows where it is and is selected by its glow alike.
     for (const p of points) {
-      if (glows.has(p.id)) continue
       const sprite = new Sprite(glowMaterial)
       sprite.position.set(p.x, GLOW_Y_M, p.z)
       sprite.scale.set(GLOW_SIZE_M, GLOW_SIZE_M, 1)
@@ -631,9 +637,13 @@ export function createLichtplanLayer(): Layer {
     glowPath.name = "lichtplan-walk-night"
     night.add(glowPath)
 
+    const dashes = dashTexture()
+    // The ribbon's u runs in widths along it; one repeat of the texture is one dash
+    // and one gap.
+    dashes.repeat.set(DAY_PATH_WIDTH_M / DAY_DASH_PERIOD_M, 1)
     const thinPath = new Mesh(
       ribbonGeometry(walk, DAY_PATH_WIDTH_M, PATH_Y_M),
-      new MeshLambertMaterial({ color: COLORS.dayPath, side: DoubleSide }),
+      new MeshLambertMaterial({ color: COLORS.dayPath, alphaMap: dashes, alphaTest: 0.5, side: DoubleSide }),
     )
     thinPath.name = "lichtplan-walk-day"
     // A cone, tip down, standing just above the street.
