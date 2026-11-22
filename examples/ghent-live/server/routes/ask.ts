@@ -109,7 +109,11 @@ const CIRCULATION =
   "the ring, and enter the other sector from there. Within one sector, cars drive freely."
 
 // The city state as text, distances measured from `from`.
-function cityContext(state: CityState, from: { name: string } & LatLon): string {
+// A city state may carry a line about its data (a stale or failed feed, from
+// server/city-state-live.ts); the question then states it too, so the answer weighs it.
+type StateWithNotice = CityState & { notice?: string }
+
+function cityContext(state: StateWithNotice, from: { name: string } & LatLon): string {
   const garages = [...state.garages]
     .map((g) => ({ g, m: metres(g, from) }))
     .sort((a, b) => a.m - b.m)
@@ -131,6 +135,7 @@ function cityContext(state: CityState, from: { name: string } & LatLon): string 
     ...garages,
     `Shared-bike stations with bikes, nearest to ${from.name} first:`,
     ...(bikes.length > 0 ? bikes : ["- none"]),
+    ...(state.notice == null ? [] : [`About this data: ${state.notice}`]),
   ].join("\n")
 }
 
@@ -138,7 +143,7 @@ function request(input: string, question: DecisionRequest["questions"][number]):
   return { model: DECISIONS_MODEL, input, questions: [question] }
 }
 
-export function planAsk(question: AskQuestion, state: CityState): AskPlan {
+export function planAsk(question: AskQuestion, state: StateWithNotice): AskPlan {
   const names = namesFor(state)
   const ask = formatAsk(question)
   const text = questionText(question, names)

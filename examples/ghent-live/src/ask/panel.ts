@@ -19,6 +19,10 @@ export type AskContext = {
   setView: (next: ViewState) => void
 }
 
+// On a phone the open panel needs at least this much height between the left-hand
+// controls and the preset bar; with less it folds rather than cover either.
+const MIN_PHONE_PANEL_PX = 160
+
 // The panel gives up on an answer after this long, so a screenshot never waits forever.
 export const ANSWER_TIMEOUT_MS = 8_000
 
@@ -131,7 +135,9 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
 
   // On a phone the open panel fills the space between the left-hand controls (the
   // Day/Night switch and the layers) and the preset bar, so it never covers them; it
-  // is measured again whenever either of them changes size.
+  // is measured again whenever either of them changes size. Opening it folds the layer
+  // list first, and when the controls grow into its space (the layer list opened) the
+  // panel folds instead of covering the preset bar.
   const narrow = window.matchMedia("(max-width: 760px)")
   function place(): void {
     if (!narrow.matches || root.dataset.state !== "open") {
@@ -143,8 +149,15 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
     const below = document.querySelector(".ui-presets")
     const top = Math.round((above?.getBoundingClientRect().bottom ?? 0) + 12)
     const bottom = Math.round((below?.getBoundingClientRect().top ?? window.innerHeight) - 12)
+    if (bottom - top < MIN_PHONE_PANEL_PX) {
+      setOpen(false)
+      return
+    }
     root.style.top = `${top}px`
-    root.style.maxHeight = `${Math.max(120, bottom - top)}px`
+    root.style.maxHeight = `${bottom - top}px`
+  }
+  const foldLayers = (): void => {
+    if (narrow.matches) document.querySelector<HTMLButtonElement>('.ui-disclosure[aria-expanded="true"]')?.click()
   }
   if (typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(place)
@@ -167,6 +180,7 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
 
   toggle.addEventListener("click", () => {
     const open = root.dataset.state !== "open"
+    if (open) foldLayers()
     setOpen(open)
     if (open && shown == null) input.focus()
   })
@@ -260,6 +274,7 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
       setOpen(false)
       return Promise.resolve()
     }
+    foldLayers()
     setOpen(true)
     if (parseAsk(raw) == null) {
       seq++

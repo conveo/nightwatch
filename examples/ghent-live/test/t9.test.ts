@@ -5,12 +5,15 @@ import { describe, test } from "node:test"
 import type { BikeStationState, CityStateProvider, GarageState } from "../server/city-state.ts"
 import { FIXTURE_CITY_STATE } from "../server/city-state-fixture.ts"
 import {
+  bikeFeedNotice,
   boltIsStale,
   cityStateFor,
   CityStateError,
   createLiveCityState,
   liveCityState,
   modeCityState,
+  PARKING_STALE_MS,
+  parkingNotice,
   STALE_AFTER_MS,
   withoutStaleBolt,
 } from "../server/city-state-live.ts"
@@ -175,6 +178,52 @@ describe("live city state", () => {
     const t7Slugs = FIXTURE_CITY_STATE.garages.map((g) => g.slug).sort()
     for (const slug of t7Slugs) assert.ok(t5Slugs.includes(slug), `garage:${slug} is not in public/fixtures/parking.json`)
     assert.deepEqual(t7Slugs, t5Slugs)
+  })
+})
+
+describe("data notices", () => {
+  test("garages whose own feed time is more than 15 minutes old are named, in the question and the answer", async () => {
+    assert.equal(PARKING_STALE_MS, 15 * 60_000)
+    const fresh = { ...GARAGE, updated: new Date(NOW - 5 * 60_000).toISOString() }
+    const old = { ...GARAGE, slug: "reep", name: "Reep", updated: new Date(NOW - 40 * 60_000).toISOString() }
+    assert.equal(parkingNotice([fresh], NOW), null)
+    assert.equal(parkingNotice([fresh, old], NOW), "Parking counts for Reep are more than 15 minutes old.")
+    assert.match(parkingNotice([old], NOW) ?? "", /^Parking counts are more than 15 minutes old \(the oldest 40 minutes\)/)
+    // A garage without a valid time is not judged.
+    assert.equal(parkingNotice([{ ...GARAGE, updated: "" }], NOW), null)
+
+    // The parking route keeps its last data when the feed fails: old counts come with the notice.
+    const stale = async (): Promise<ParkingSnapshot> => ({ time: old.updated, garages: [old] })
+    let asked = ""
+    const route = createAskRoute({
+      provider: createLiveCityState({ garages: stale, bikes: bikesReported(undefined), now: () => NOW }),
+      apiKey: () => "sk-test",
+      decide: async (request) => {
+        asked = JSON.stringify(request)
+        return fake(request)
+      },
+    })
+    const answer = await route.ask({ ask: "park:gravensteen", mode: "live", time: null })
+    assert.match(answer.notice ?? "", /^Parking counts are more than 15 minutes old/)
+    assert.match(asked, /About this data: Parking counts are more than 15 minutes old/)
+  })
+
+  test("every bike operator whose feed failed or answered in part is named, even when another answered", async () => {
+    assert.equal(bikeFeedNotice({ donkey: "ok", bolt: "ok", "blue-bike": "ok" }), null)
+    assert.equal(bikeFeedNotice(undefined), null)
+    assert.equal(
+      bikeFeedNotice({ donkey: "missing", bolt: "missing", "blue-bike": "ok" }),
+      "Donkey Republic bikes left out: its feed did not answer. Bolt bikes left out: its feed did not answer.",
+    )
+    assert.equal(bikeFeedNotice({ donkey: "partial" }), "Donkey Republic's availability did not answer: its stations count as empty.")
+    assert.equal(bikeFeedNotice({ "blue-bike": "partial" }), "Blue-bike bikes in part: some of its feeds did not answer.")
+
+    const state = await createLiveCityState({
+      garages: parking,
+      bikes: async () => ({ stations: [], feeds: { donkey: "missing", bolt: "missing", "blue-bike": "ok" } }),
+      now: () => NOW,
+    }).current({ mode: "live", time: null })
+    assert.match(state.notice ?? "", /Donkey Republic bikes left out.*Bolt bikes left out/)
   })
 })
 
