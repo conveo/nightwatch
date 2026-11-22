@@ -1,0 +1,20 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "columns_of_different_heights",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "columns_partly_filled",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "selected_garage_labelled",
+      "probability": 1
+    }
+  ]
+}

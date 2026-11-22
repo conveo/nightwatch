@@ -1,0 +1,24 @@
+{
+  "view": "#cam=420,310,-820&tgt=-150,30,30&sel=garage:vrijdagmarkt",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser, centred on the Belfry (the red ring). This view shows the parking layer: each parking garage in the centre is drawn as a vertical column standing on the map, whose height is the garage's capacity and whose solid lower part is its occupied places. Other layers (buildings, water) may not be drawn yet; a plain ground grid stands in for the city.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "columns_of_different_heights",
+      "instructions": "Columns of different heights stand in the city: several vertical columns are visible on the map, and they are not all the same height.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "columns_partly_filled",
+      "instructions": "The columns are partly filled: each column has a solid, opaque lower part and an emptier, transparent or outlined part above it up to its top.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "selected_garage_labelled",
+      "instructions": "One column is highlighted, with a label above it that names a parking garage and its number of free places.",
+      "min": 0.8
+    }
+  ]
+}

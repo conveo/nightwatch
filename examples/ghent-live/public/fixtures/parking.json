@@ -1,0 +1,20 @@
+{
+  "time": "2026-11-22T18:47:48Z",
+  "garages": [
+    {"slug":"b-park-dampoort","name":"B-Park Dampoort","lat":51.0561,"lon":3.73956,"capacity":220,"available":220,"updated":"2026-11-22T18:43:31.000Z"},
+    {"slug":"b-park-gent-sint-pieters","name":"B-Park Gent Sint-Pieters","lat":51.0369,"lon":3.70502,"capacity":1000,"available":1000,"updated":"2026-11-22T18:43:32.000Z"},
+    {"slug":"dok-noord","name":"Dok noord","lat":51.065684935819604,"lon":3.7328389913720565,"capacity":550,"available":321,"updated":"2026-11-22T18:45:00.000Z"},
+    {"slug":"getouw","name":"Getouw","lat":51.072569883800206,"lon":3.7148313576713052,"capacity":347,"available":336,"updated":"2026-11-22T18:44:32.000Z"},
+    {"slug":"ledeberg","name":"Ledeberg","lat":51.03634169048174,"lon":3.738571094371151,"capacity":495,"available":321,"updated":"2026-11-22T18:44:40.000Z"},
+    {"slug":"p-r-the-loop","name":"P+R The Loop","lat":51.024483197,"lon":3.69519252261,"capacity":146,"available":131,"updated":"2026-11-22T18:44:32.000Z"},
+    {"slug":"ramen","name":"Ramen","lat":51.05532,"lon":3.71653,"capacity":227,"available":114,"updated":"2026-11-22T18:44:40.000Z"},
+    {"slug":"reep","name":"Reep","lat":51.05215838523151,"lon":3.7298928896398924,"capacity":455,"available":261,"updated":"2026-11-22T18:44:32.000Z"},
+    {"slug":"savaan","name":"Savaan","lat":51.04877362543108,"lon":3.7234627726667133,"capacity":490,"available":360,"updated":"2026-11-22T18:44:32.000Z"},
+    {"slug":"sint-michiels","name":"Sint-Michiels","lat":51.05311004768356,"lon":3.719727740000235,"capacity":451,"available":254,"updated":"2026-11-22T18:44:32.000Z"},
+    {"slug":"sint-pietersplein","name":"Sint-Pietersplein","lat":51.04202834988112,"lon":3.7259818626205483,"capacity":700,"available":445,"updated":"2026-11-22T18:44:40.000Z"},
+    {"slug":"the-loop","name":"The Loop","lat":51.02542334883013,"lon":3.6864592214319964,"capacity":2490,"available":2489,"updated":"2026-11-22T18:44:31.000Z"},
+    {"slug":"the-loop-parking-d","name":"The Loop - Parking D","lat":51.02836231643179,"lon":3.695199111553406,"capacity":177,"available":174,"updated":"2026-11-22T18:44:31.000Z"},
+    {"slug":"tolhuis","name":"Tolhuis","lat":51.0637023559265,"lon":3.724968367281895,"capacity":149,"available":63,"updated":"2026-11-22T18:44:40.000Z"},
+    {"slug":"vrijdagmarkt","name":"Vrijdagmarkt","lat":51.05713405953412,"lon":3.726071777876147,"capacity":602,"available":255,"updated":"2026-11-22T18:44:40.000Z"}
+  ]
+}
