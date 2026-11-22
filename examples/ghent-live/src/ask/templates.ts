@@ -19,11 +19,14 @@ export type AskQuestion =
 
 export const MAX_FREE_QUESTION = 200
 
-// Slugs are lower case, ASCII, words joined by "-": "Sint-Michiels" → "sint-michiels",
-// "P+R The Loop" → "p-r-the-loop". Diacritics are stripped ("François" → "francois").
+// Slugs are lower case, ASCII, words joined by "-", the same rule as the parking
+// layer's (T5): NFKD, diacritics stripped, lower case, every run of characters outside
+// [a-z0-9] becomes one "-", none leading or trailing. "Sint-Michiels" → "sint-michiels",
+// "P+R The Loop" → "p-r-the-loop", "The Loop - Parking D" → "the-loop-parking-d",
+// "François" → "francois".
 export function slugify(name: string): string {
   return name
-    .normalize("NFD")
+    .normalize("NFKD")
     .replace(/\p{M}/gu, "")
     .toLowerCase()
     .split(/[^a-z0-9]+/)

@@ -37,6 +37,34 @@ test("slugs follow the contract: lower case, ASCII, words joined by -", () => {
   assert.equal(slugify("The Loop - Parking D"), "the-loop-parking-d")
   assert.equal(slugify("François Laurentplein"), "francois-laurentplein")
   assert.equal(slugify("Portus Ganda"), "portus-ganda")
+  assert.equal(slugify("ﬁets  –  Ü"), "fiets-u")
+  assert.equal(slugify("-1 De Krook (underground)"), "1-de-krook-underground")
+})
+
+// The parking layer's (T5) slugs for tonight's feed, exactly.
+test("garage slugs match the parking layer's for every garage in the feed", () => {
+  const t5: Record<string, string> = {
+    "B-Park Dampoort": "b-park-dampoort",
+    "B-Park Gent Sint-Pieters": "b-park-gent-sint-pieters",
+    "Dok noord": "dok-noord",
+    Getouw: "getouw",
+    Ledeberg: "ledeberg",
+    "P+R The Loop": "p-r-the-loop",
+    Ramen: "ramen",
+    Reep: "reep",
+    Savaan: "savaan",
+    "Sint-Michiels": "sint-michiels",
+    "Sint-Pietersplein": "sint-pietersplein",
+    "The Loop": "the-loop",
+    "The Loop - Parking D": "the-loop-parking-d",
+    Tolhuis: "tolhuis",
+    Vrijdagmarkt: "vrijdagmarkt",
+  }
+  for (const [name, slug] of Object.entries(t5)) assert.equal(slugify(name), slug, name)
+  assert.deepEqual(
+    Object.fromEntries(FIXTURE_CITY_STATE.garages.map((g) => [g.name, g.slug])),
+    t5,
+  )
 })
 
 test("questions parse from the URL and format back unchanged", () => {
@@ -91,6 +119,22 @@ test("a parking question offers the nearest garages with space and a shared bike
     garages: FIXTURE_CITY_STATE.garages.map((g) => (g.slug === "ramen" ? { ...g, available: 0 } : g)),
   }
   assert.ok(!planAsk(parseAsk("park:gravensteen")!, ramenFull).options.some((o) => o.value === "garage:ramen"))
+
+  // Only the garages drawn on the map are offered, from every place.
+  const onMap = new Set(["garage:ramen", "garage:reep", "garage:savaan", "garage:sint-michiels", "garage:vrijdagmarkt"])
+  for (const place of FIXTURE_CITY_STATE.places) {
+    const offered = planAsk({ template: "park", place: place.slug }, FIXTURE_CITY_STATE).options.filter((o) => o.value.startsWith("garage:"))
+    assert.equal(offered.length, 3, place.slug)
+    assert.ok(offered.every((o) => onMap.has(o.value)), `${place.slug}: ${offered.map((o) => o.value).join(", ")}`)
+  }
+  // With every garage on the map full, the nearest one off it is offered, and says so.
+  const mapFull: CityState = {
+    ...FIXTURE_CITY_STATE,
+    garages: FIXTURE_CITY_STATE.garages.map((g) => (onMap.has(`garage:${g.slug}`) ? { ...g, available: 0 } : g)),
+  }
+  const offMap = planAsk(parseAsk("park:gravensteen")!, mapFull).options[0]!
+  assert.ok(!onMap.has(offMap.value) && offMap.value.startsWith("garage:"))
+  assert.match(offMap.detail, /off the map$/)
 })
 
 test("unknown places and sectors are a plain 400", () => {

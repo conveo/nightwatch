@@ -28,6 +28,7 @@ import {
   type AskRequest,
   type Names,
 } from "../../src/ask/templates.ts"
+import { inArea } from "../../src/constants.ts"
 import { ORIGIN, toLocal, type LatLon } from "../../src/geo.ts"
 import { readJson, sendJson, type Route } from "../api.ts"
 import type { CityState, CityStateProvider, GarageState } from "../city-state.ts"
@@ -139,11 +140,14 @@ export function planAsk(question: AskQuestion, state: CityState): AskPlan {
         throw new AskError(400, `Unknown place "${question.place}". Places: ${state.places.map((p) => p.slug).join(", ")}.`)
       }
       const at = { name: place.nl, lat: place.lat, lon: place.lon }
-      const garages = state.garages
+      // Only the garages inside the map are drawn, so a parking answer offers those;
+      // a garage off the map is offered only when none on it has space, and says so.
+      const withSpace = state.garages
         .filter((g) => g.available > 0)
         .map((g) => ({ g, m: metres(g, at) }))
         .sort((a, b) => a.m - b.m)
-        .slice(0, PARK_GARAGES)
+      const onMap = withSpace.filter(({ g }) => inArea(g))
+      const garages = (onMap.length > 0 ? onMap : withSpace).slice(0, PARK_GARAGES)
       const bike = state.bikes
         .filter((b) => b.available > 0)
         .map((b) => ({ b, m: metres(b, at) }))
@@ -152,7 +156,7 @@ export function planAsk(question: AskQuestion, state: CityState): AskPlan {
         ...garages.map(({ g, m }) => ({
           value: `garage:${g.slug}`,
           label: g.name,
-          detail: `${g.available} of ${g.capacity} places free · ${distance(m)} away`,
+          detail: `${g.available} of ${g.capacity} places free · ${distance(m)} away${inArea(g) ? "" : " · off the map"}`,
         })),
         ...(bike == null
           ? []
