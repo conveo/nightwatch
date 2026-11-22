@@ -1,0 +1,8 @@
+# The example is its own pnpm workspace with its own lockfile, so installing the mesh
+# never pulls in three.js and Vite.
+packages:
+  - "."
+
+# Vite bundles esbuild, which downloads its platform binary in a postinstall step.
+allowBuilds:
+  esbuild: true

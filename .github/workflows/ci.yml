@@ -97,6 +97,24 @@ jobs:
         run: pnpm --dir examples/nyc-live test
       - run: pnpm --dir examples/nyc-live build
 
+  ghent-live:
+    name: ghent-live example typecheck, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: examples/ghent-live/pnpm-lock.yaml
+      - run: pnpm --dir examples/ghent-live install --frozen-lockfile
+      - run: pnpm --dir examples/ghent-live typecheck
+      - name: Unit tests (visual checks replay recorded answers, so no API key)
+        run: pnpm --dir examples/ghent-live test
+      - run: pnpm --dir examples/ghent-live build
+
   skills:
     name: Skill files parse
     runs-on: ubuntu-latest
