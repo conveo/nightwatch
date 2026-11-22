@@ -1,0 +1,31 @@
+{
+  "view": "",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser, shown on a projector during a talk. The camera stands at eye height on a bridge over the river Leie (the Sint-Michielsbrug) and looks east toward the city's towers.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "three_towers",
+      "instructions": "Three towers stand in a row.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "eye_level",
+      "instructions": "The view is from street level, at about eye height, looking across the city rather than down on it from the air.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "tower_labels",
+      "instructions": "Name labels such as 'Sint-Niklaas', 'Belfort' and 'Sint-Baafs' mark the towers.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "instructions": "The on-screen text is readable from the back of a room. How readable is the on-screen text when the screen is projected for an audience of 100 people?",
+      "levels": [{ "label": "poor" }, { "label": "acceptable" }, { "label": "good" }],
+      "minLevel": "acceptable"
+    }
+  ]
+}
