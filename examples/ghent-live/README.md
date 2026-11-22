@@ -71,22 +71,53 @@ panel exists, by the dev server's `/api/ask`. It never reaches the browser.
 ## Review it
 
 The [reviewer overlay](../../reviewer-overlay/) lets a person pin notes, with a
-screenshot, on the running app; each note reaches an agent's mesh inbox. Start the
-overlay server with every origin the app is opened from, then point the dev server
-at it:
+screenshot, on the running app; each note reaches an agent's mesh inbox. Two
+commands, from the repository root: start the overlay server with every origin the
+app is opened from and the mesh id of the agent that reads the notes (the one
+running `/human-review`; the overlay publishes with the `agent-mesh` CLI on your
+`PATH`), then point the dev server at it:
 
 ```bash
 pnpm overlay --port 4858 --origin http://127.0.0.1:5280 --target <reviewer agent id> \
-  --plan "$PWD/examples/ghent-live/plan/review-plan.json"     # from the repository root
+  --plan "$PWD/examples/ghent-live/plan/review-plan.json"
 GHENT_LIVE_OVERLAY=http://127.0.0.1:4858 pnpm --dir examples/ghent-live dev
 ```
 
-The dev server adds the overlay's script to the page and forwards the script and
-`/api/review` on the app's own origin, so the browser only talks to the app. That
-also works through a proxy such as `tailscale serve` (add the proxy's origin with
-another `--origin`, and its host to `GHENT_LIVE_ALLOWED_HOSTS`). The overlay never
-enters a production build. Each note carries the page URL, whose hash is the exact
-view. Ticket T10 in the plan proves this end to end and completes this section.
+Open http://127.0.0.1:5280, click **Reviewer**, then **Add comment**, and share the
+tab when the browser asks; click the spot, write the note and send it. The dev
+server adds the overlay's script to the page and forwards the script and
+`/api/review` on the app's own origin, so the browser only talks to the app. Each
+note carries the page URL, whose hash is the exact view, and a PNG of the tab with
+the numbered pin drawn on it. The overlay never enters a production build.
+
+Through a proxy such as `tailscale serve`, add the proxy's origin with a second
+`--origin`, and its host name to `GHENT_LIVE_ALLOWED_HOSTS`:
+
+```bash
+pnpm overlay --port 4858 --origin http://127.0.0.1:5280 --origin https://<your proxy host> \
+  --target <reviewer agent id> --plan "$PWD/examples/ghent-live/plan/review-plan.json"
+GHENT_LIVE_OVERLAY=http://127.0.0.1:4858 GHENT_LIVE_ALLOWED_HOSTS=<your proxy host> \
+  pnpm --dir examples/ghent-live dev
+```
+
+The proxy must serve https: a browser shares a tab only from a secure context
+(`https://`, or `localhost` and `127.0.0.1`).
+
+[scripts/review-e2e.ts](scripts/review-e2e.ts) proves all of this end to end. With a
+throwaway mesh of its own (a Redis container and a daemon, never a mesh already
+running), the overlay server, a dev server and a short-lived headless Chrome, it
+reviews the default view at night with the Belfry selected, once on the app's own
+origin and once through a proxy's host name: it drops a pin on the red ring, sends a
+note, and checks that the note reaches the reviewer's inbox with the comment, a URL
+whose hash is the view, and a screenshot of the scene with the pin. Then
+`check:visual` runs [checks/review-note.json](checks/review-note.json) on that
+screenshot. It needs Docker, the repository's root dependencies
+(`pnpm install --frozen-lockfile` at the root) and a key for `check:visual`:
+
+```bash
+node scripts/review-e2e.ts --env-file <file with OPENAI_API_KEY>    # in examples/ghent-live
+CHROME_FLAGS=--no-sandbox node scripts/review-e2e.ts --env-file <file>    # where Chrome's sandbox cannot start
+```
 
 ## Settings
 

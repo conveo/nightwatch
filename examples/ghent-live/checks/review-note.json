@@ -1,0 +1,18 @@
+{
+  "view": "#cam=-250,420,620&tgt=0,0,0&sel=place:belfort&mode=fixture&light=night",
+  "context": "The screenshot a reviewer sent from ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser at night. The reviewer overlay captured the browser tab and drew the reviewer's pin on top of the frame. Depending on which layers are built, the scene shows a ground grid with a red ring marking the Belfry, and possibly also buildings, water, lights and other city data.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "city_scene",
+      "instructions": "A 3D city scene is visible: the rendered map (at least a ground grid or map seen in perspective, with a red ring marker) fills the frame, so this is not a blank, white or black canvas.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "numbered_pin",
+      "instructions": "A numbered pin marker is drawn on the image: a teardrop-shaped map pin with a number inside its round head.",
+      "min": 0.8
+    }
+  ]
+}
