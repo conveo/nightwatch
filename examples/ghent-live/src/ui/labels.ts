@@ -44,30 +44,38 @@ export const LABEL_ORDER: readonly string[] = [
   "sint-michielsbrug",
 ]
 
-// The radius around a landmark's foot, in metres, that no label covers: the label
-// names the landmark, it should not hide it. The Belfry's is wider, for the red
-// ring that marks the scene origin there (radius 34 m).
-export const FOOT_RADIUS_M: Readonly<Record<string, number>> = { belfort: 40 }
-export const DEFAULT_FOOT_RADIUS_M = 30
+// The body of a landmark, in metres, that no label covers: a label names the
+// landmark, it should not hide it. Every landmark has a foot on the ground (a disc);
+// a tower also has a shaft up to its top. The Belfry's foot is wider and its shaft
+// taller for the base's marker there, a red ring (radius 34 m) and beam (160 m).
+export type Body = { foot: number; shaft?: { radius: number; height: number } }
+export const BODIES: Readonly<Record<string, Body>> = {
+  belfort: { foot: 40, shaft: { radius: 8, height: 160 } },
+  "sint-baafs": { foot: 30, shaft: { radius: 8, height: 81 } },
+  "sint-niklaas": { foot: 30, shaft: { radius: 8, height: 60 } },
+}
+export const DEFAULT_BODY: Body = { foot: 30 }
 
 // A label closer than this to the camera is where you are standing, not something
 // to point at.
 export const MIN_LABEL_DISTANCE_M = 40
 
-// `anchor` is the dot (the projected label height), `foot` the box around the
-// landmark's projected foot, both in pixels, or null when not on screen.
-export type LabelInput = { id: string; anchor: Point | null; foot: Rect | null; w: number; h: number }
+// `anchor` is the dot (the projected label height) and `body` the boxes around the
+// landmark's projected foot and shaft, in pixels; `anchor` is null when not on screen.
+export type LabelInput = { id: string; anchor: Point | null; body: readonly Rect[]; w: number; h: number }
 // Where a label goes (its top-left corner), and whether it hangs on a stem from its dot.
 export type Placement = Point & { pin: boolean }
 
 // A label hangs this far above (or below) its dot, on a stem; beside the dot it keeps
 // a shorter gap.
 export const STEM_PX = 44
-const SIDE_PX = 16
+const SIDE_PX = 20
 const DOT_PX = 16
+// A stem longer than this no longer reads as pointing at its dot: such a label hides.
+export const MAX_STEM_PX = 90
 // The least space kept between a label and anything else, and between a label and
 // the panels or the edge of the screen, in pixels.
-const PAD = 8
+const PAD = 14
 const PANEL_PAD = 16
 
 function overlaps(a: Rect, b: Rect, pad = PAD): boolean {
@@ -78,13 +86,42 @@ function contains(r: Rect, p: Point): boolean {
   return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
 }
 
-// Places each label next to what it names: above if there is room, else below, to
-// the right or left, or above but shifted to one side. Usually that is next to its
-// dot, on a stem. Seen from overhead a tower's top falls on its own foot, so there
-// the label sits beside the foot instead, with no dot or stem.
+// The places to try for a label, best first: above its dot (centred, then shifted to
+// one side), to the right or left of it, and below it, which comes last because
+// below a tower's top the label would hide the tower. Each one slides clear of the
+// label's own landmark, so a label beside a tower stands beside its shaft.
+function candidates(a: Point, w: number, h: number, gap: number, own: readonly Rect[]): Point[] {
+  const across = (y: number) => own.filter((r) => r.y < y + h + PAD && y < r.y + r.h + PAD)
+  const along = (x: number) => own.filter((r) => r.x < x + w + PAD && x < r.x + r.w + PAD)
+  const above = (x: number): Point => {
+    const top = Math.min(a.y, ...along(x).filter((r) => r.y <= a.y).map((r) => r.y))
+    return { x, y: top - gap - h }
+  }
+  const right = (): Point => {
+    const y = a.y - h / 2
+    const edge = Math.max(a.x, ...across(y).filter((r) => r.x <= a.x).map((r) => r.x + r.w))
+    return { x: edge + SIDE_PX, y }
+  }
+  const left = (): Point => {
+    const y = a.y - h / 2
+    const edge = Math.min(a.x, ...across(y).filter((r) => r.x + r.w >= a.x).map((r) => r.x))
+    return { x: edge - SIDE_PX - w, y }
+  }
+  const below = (): Point => {
+    const x = a.x - w / 2
+    const bottom = Math.max(a.y, ...along(x).filter((r) => r.y + r.h >= a.y).map((r) => r.y + r.h))
+    return { x, y: bottom + gap }
+  }
+  return [above(a.x - w / 2), above(a.x - w + SIDE_PX), above(a.x - SIDE_PX), right(), left(), below()]
+}
+
+// Places each label next to what it names, usually on a stem from its dot. Where the
+// dot falls on a landmark's body (a tower's top seen from overhead lies on its own
+// foot; the Belfry's lies on the base's red beam) the label stands beside the body
+// instead, with no dot or stem.
 //
 // A label never leaves the viewport and never covers another label, a dot, an
-// obstacle (the title, the panels) or a landmark's foot. One that fits nowhere is
+// obstacle (the title, the panels) or any landmark's body. One that fits nowhere is
 // hidden (null), and so is one whose dot is off screen or under an obstacle. Labels
 // earlier in the list win.
 export function layoutLabels(
@@ -92,8 +129,8 @@ export function layoutLabels(
   viewport: { w: number; h: number },
   obstacles: readonly Rect[] = [],
 ): Map<string, Placement | null> {
-  const feet = labels.flatMap((l) => (l.foot == null ? [] : [l.foot]))
-  const pinned = (l: LabelInput): boolean => l.anchor != null && !feet.some((f) => contains(f, l.anchor!))
+  const bodies = labels.flatMap((l) => l.body)
+  const pinned = (l: LabelInput): boolean => l.anchor != null && !bodies.some((b) => contains(b, l.anchor!))
   // Every dot stays uncovered, so each label still points at its own landmark.
   const dots: Rect[] = labels.flatMap((l) =>
     l.anchor == null || !pinned(l) ? [] : [{ x: l.anchor.x - DOT_PX / 2, y: l.anchor.y - DOT_PX / 2, w: DOT_PX, h: DOT_PX }],
@@ -107,26 +144,15 @@ export function layoutLabels(
       continue
     }
     const pin = pinned(label)
-    // What the label stands next to: the dot, or the landmark's foot.
-    const box: Rect = pin || label.foot == null ? { x: a.x, y: a.y, w: 0, h: 0 } : label.foot
-    const gapV = pin ? STEM_PX : SIDE_PX
-    const cx = box.x + box.w / 2
-    const cy = box.y + box.h / 2
     const { w, h } = label
-    const candidates: Point[] = [
-      { x: cx - w / 2, y: box.y - gapV - h },
-      { x: cx - w / 2, y: box.y + box.h + gapV },
-      { x: box.x + box.w + SIDE_PX, y: cy - h / 2 },
-      { x: box.x - SIDE_PX - w, y: cy - h / 2 },
-      { x: cx - w + SIDE_PX, y: box.y - gapV - h },
-      { x: cx - SIDE_PX, y: box.y - gapV - h },
-    ]
-    const fit = candidates.find((c) => {
+    const fit = candidates(a, w, h, pin ? STEM_PX : SIDE_PX, label.body).find((c) => {
       const r = { x: c.x, y: c.y, w, h }
+      const end = stemEnd(a, r)
+      if (Math.hypot(end.x - a.x, end.y - a.y) > MAX_STEM_PX) return false
       const inside = r.x >= PANEL_PAD && r.y >= PANEL_PAD && r.x + w <= viewport.w - PANEL_PAD && r.y + h <= viewport.h - PANEL_PAD
       const clear = (o: Rect): boolean => !overlaps(r, o)
       const clearOfPanel = (o: Rect): boolean => !overlaps(r, o, PANEL_PAD)
-      return inside && obstacles.every(clearOfPanel) && placed.every(clear) && dots.every(clear) && feet.every(clear)
+      return inside && obstacles.every(clearOfPanel) && placed.every(clear) && dots.every(clear) && bodies.every(clear)
     })
     if (fit != null) placed.push({ ...fit, w, h })
     out.set(label.id, fit == null ? null : { ...fit, pin })
@@ -182,10 +208,19 @@ export function mountLabels(root: HTMLElement, ctx: LabelsContext): void {
     stem.setAttribute("visibility", "hidden")
     stems.append(stem)
     layer.append(dot, button)
-    const r = FOOT_RADIUS_M[place.slug] ?? DEFAULT_FOOT_RADIUS_M
-    const foot = [new Vector3(x - r, 0, z), new Vector3(x + r, 0, z), new Vector3(x, 0, z - r), new Vector3(x, 0, z + r)]
+    const body = BODIES[place.slug] ?? DEFAULT_BODY
+    const cylinders = [{ radius: body.foot, height: 0 }, ...(body.shaft == null ? [] : [body.shaft])]
+    // Each part of the body as the corners of its box, projected every frame.
+    const parts = cylinders.map(({ radius: r, height }) =>
+      [0, height].flatMap((y) => [
+        new Vector3(x - r, y, z),
+        new Vector3(x + r, y, z),
+        new Vector3(x, y, z - r),
+        new Vector3(x, y, z + r),
+      ]),
+    )
     const world = new Vector3(x, LABEL_HEIGHT_M[place.slug] ?? 10, z)
-    return { slug: place.slug, world, foot, button, dot, stem, w: 0, h: 0, last: "" }
+    return { slug: place.slug, world, parts, button, dot, stem, w: 0, h: 0, last: "" }
   })
 
   // Sizes change only with the text or the fonts, so they are measured then, not
@@ -214,14 +249,14 @@ export function mountLabels(root: HTMLElement, ctx: LabelsContext): void {
     const inputs = items.map((item): LabelInput => {
       const far = item.world.distanceTo(ctx.camera.position) >= MIN_LABEL_DISTANCE_M
       const anchor = far ? toScreen(item.world, w, h) : null
-      const corners = item.foot.map((p) => toScreen(p, w, h))
-      let foot: Rect | null = null
-      if (corners.every((c) => c != null)) {
-        const xs = corners.map((c) => c!.x)
-        const ys = corners.map((c) => c!.y)
-        foot = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
-      }
-      return { id: item.slug, anchor, foot, w: item.w, h: item.h }
+      const body = item.parts.flatMap((corners): Rect[] => {
+        const points = corners.map((p) => toScreen(p, w, h))
+        if (points.some((p) => p == null)) return []
+        const xs = points.map((p) => p!.x)
+        const ys = points.map((p) => p!.y)
+        return [{ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }]
+      })
+      return { id: item.slug, anchor, body, w: item.w, h: item.h }
     })
     const layout = layoutLabels(inputs, { w, h }, ctx.obstacles())
     const selected = ctx.selected()

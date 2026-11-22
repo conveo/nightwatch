@@ -190,8 +190,8 @@ test("layer switches write `layers`, and every layer on is no `layers` at all", 
 
 const VIEWPORT = { w: 1600, h: 900 }
 
-function label(id: string, x: number, y: number, foot: Rect | null = null): LabelInput {
-  return { id, anchor: { x, y }, foot, w: 160, h: 40 }
+function label(id: string, x: number, y: number, body: Rect[] = []): LabelInput {
+  return { id, anchor: { x, y }, body, w: 160, h: 40 }
 }
 
 function rects(inputs: LabelInput[], layout: ReturnType<typeof layoutLabels>): Rect[] {
@@ -212,7 +212,7 @@ test("a label hangs above its dot on a stem when there is room", () => {
 })
 
 test("labels never overlap one another or cover another label's dot", () => {
-  const inputs = [label("a", 800, 450), label("b", 820, 455), label("c", 790, 440), label("d", 900, 470), label("e", 700, 430)]
+  const inputs = [label("a", 800, 450), label("b", 880, 470), label("c", 700, 430), label("d", 1000, 500), label("e", 600, 420)]
   const layout = layoutLabels(inputs, VIEWPORT)
   const placed = rects(inputs, layout)
   assert.ok(placed.length >= 4, "most of them still find a place")
@@ -240,7 +240,7 @@ test("labels keep clear of the title and the panels, and of the screen's edges",
 })
 
 test("a dot off screen or behind the camera hides its label", () => {
-  const layout = layoutLabels([label("left", -10, 300), { id: "behind", anchor: null, foot: null, w: 160, h: 40 }], VIEWPORT)
+  const layout = layoutLabels([label("left", -10, 300), { id: "behind", anchor: null, body: [], w: 160, h: 40 }], VIEWPORT)
   assert.equal(layout.get("left"), null)
   assert.equal(layout.get("behind"), null)
 })
@@ -249,7 +249,7 @@ test("seen from overhead, a label sits beside its landmark's foot, not on it", (
   // The tower's top falls inside its own foot: the Belfry's red ring, from above.
   const foot: Rect = { x: 760, y: 410, w: 80, h: 80 }
   // The Stadhuis, seen at an angle: its dot (25 m up) is above its foot.
-  const inputs = [label("belfort", 802, 444, foot), label("stadhuis", 810, 280, { x: 780, y: 300, w: 60, h: 60 })]
+  const inputs = [label("belfort", 802, 444, [foot]), label("stadhuis", 810, 280, [{ x: 780, y: 300, w: 60, h: 60 }])]
   const layout = layoutLabels(inputs, VIEWPORT)
   const belfort = layout.get("belfort")!
   assert.equal(belfort.pin, false, "no dot or stem inside the foot")
@@ -258,6 +258,28 @@ test("seen from overhead, a label sits beside its landmark's foot, not on it", (
     assert.ok(!intersects(r, foot), "no label covers the Belfry's foot")
     assert.ok(!intersects(r, { x: 780, y: 300, w: 60, h: 60 }), "nor the Stadhuis's")
   }
+})
+
+test("beside a tower, a label stands clear of the tower's shaft", () => {
+  // Seen from the street: the Belfry's dot lies on its shaft (the base's red beam
+  // rises above the tower), at the top of the screen, so the label cannot go above.
+  const shaft: Rect = { x: 740, y: -200, w: 20, h: 600 }
+  const layout = layoutLabels([label("belfort", 750, 60, [shaft])], VIEWPORT)
+  const at = layout.get("belfort")!
+  assert.equal(at.pin, false)
+  assert.ok(!intersects({ x: at.x, y: at.y, w: 160, h: 40 }, shaft))
+  assert.ok(Math.abs(at.y + 20 - 60) < 1, "level with the tower's top")
+  assert.ok(at.x >= 760 && at.x < 800, "just beside the shaft")
+})
+
+test("a label that could only hang far from its dot is hidden instead", () => {
+  // The dot is on a tall tower whose neighbours fill both sides, so the label could
+  // only go far above or below the tower, further than a stem reaches.
+  const shaft: Rect = { x: 780, y: 100, w: 40, h: 700 }
+  const left = label("left", 650, 450, [{ x: 560, y: 300, w: 210, h: 300 }])
+  const right = label("right", 950, 450, [{ x: 830, y: 300, w: 210, h: 300 }])
+  const layout = layoutLabels([label("lost", 800, 450, [shaft]), left, right], VIEWPORT)
+  assert.equal(layout.get("lost"), null)
 })
 
 // test/fixtures/ui-*.png are real screenshots of two presets and test/recordings/

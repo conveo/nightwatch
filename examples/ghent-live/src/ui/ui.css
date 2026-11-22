@@ -38,6 +38,11 @@
 
 /* Bottom left, above the attribution line; the right side is the "Ask Ghent" panel's
    and the reviewer overlay's. */
+.ui-presets,
+.ui-panel {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
 .ui-presets {
   position: fixed;
   left: 16px;
@@ -48,7 +53,8 @@
   max-width: calc(100vw - 32px);
   padding: 8px;
   border-radius: 12px;
-  background: var(--panel);
+  /* Opaque: the scene's lines must not show through the controls. */
+  background: #0b1020;
 }
 
 @media (min-width: 1000px) {
@@ -69,7 +75,7 @@
   padding: 12px;
   overflow-y: auto;
   border-radius: 10px;
-  background: var(--panel);
+  background: #0b1020;
 }
 
 .ui-light {
