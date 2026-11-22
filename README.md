@@ -188,6 +188,7 @@ agent-mesh/          the daemon, CLI, delivery adapters, dashboard, supervisor a
 skills/              the agent skills
 reviewer-overlay/    browser overlay and local server that send ui-review notes
 examples/nyc-live/   an example app for a nightwatch run to build overnight (three.js, live NYC data)
+examples/ghent-live/ the same for Ghent's historic centre (three.js, open Flemish and Ghent data)
 docs/                console, delivery contract, deployment, resilience, supervisor, verification record
 scripts/             maintainer tooling (sync from the upstream monorepo, denylist gate)
 docker-compose.yml   a local Redis
