@@ -115,6 +115,12 @@ export function bikesAvailable(count: unknown, renting?: unknown): number {
   return n == null || n < 0 ? 0 : Math.floor(n)
 }
 
+// The records of a list that are objects; anything else in a feed (null, a number, a
+// string) is skipped, so one malformed item never hides the rest.
+function records<T>(list: readonly T[] | null): T[] {
+  return (list ?? []).filter((item) => typeof item === "object" && item != null)
+}
+
 function feedStatus(parts: ReadonlyArray<unknown[] | null>): FeedStatus {
   const ok = parts.filter((p) => p != null).length
   return ok === parts.length ? "ok" : ok === 0 ? "missing" : "partial"
@@ -135,18 +141,18 @@ export function mergeBikeFeeds(raw: RawFeeds): Omit<BikesAnswer, "time"> {
   }
 
   const donkeyBikes = new Map<string, number>()
-  for (const a of raw.donkeyAvailability ?? []) {
+  for (const a of records(raw.donkeyAvailability)) {
     const id = text(a.station_id)
     if (id != null) donkeyBikes.set(id, bikesAvailable(a.num_bikes_available, a.is_renting))
   }
-  for (const s of raw.donkeyLocations ?? []) {
+  for (const s of records(raw.donkeyLocations)) {
     add("donkey", s.station_id, s.name, s.lat, s.lon, donkeyBikes.get(text(s.station_id) ?? "") ?? 0)
   }
-  for (const s of raw.bolt ?? []) {
+  for (const s of records(raw.bolt)) {
     add("bolt", s.station_id, s.name, s.lat, s.lon, bikesAvailable(s.num_bikes_available, s.is_renting))
   }
   for (const feed of raw.blueBike) {
-    for (const s of feed ?? []) add("blue-bike", s.id, s.name, s.latitude, s.longitude, bikesAvailable(s.bikes_available))
+    for (const s of records(feed)) add("blue-bike", s.id, s.name, s.latitude, s.longitude, bikesAvailable(s.bikes_available))
   }
 
   const order = (s: BikeStationState) => OPERATORS.indexOf(s.operator)
@@ -207,7 +213,15 @@ export function createBikeFeed(options: { fetchJson?: FetchJson; now?: () => num
   return {
     current(): Promise<BikesAnswer> {
       const at = now()
-      if (cached == null || at - cached.at >= cacheMs) cached = { at, answer: load(at) }
+      if (cached == null || at - cached.at >= cacheMs) {
+        const entry = { at, answer: load(at) }
+        // load() catches every dataset's failure; should it reject all the same, the
+        // next caller tries again instead of getting the rejection for a minute.
+        entry.answer.catch(() => {
+          if (cached === entry) cached = null
+        })
+        cached = entry
+      }
       return cached.answer
     },
   }

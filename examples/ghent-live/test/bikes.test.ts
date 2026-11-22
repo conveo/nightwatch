@@ -113,6 +113,26 @@ test("a dataset that fails does not break the others, and its operator is report
   assert.equal(bikesNotice(answer, "live", Date.parse(answer.time)), "Shared bikes: no Bolt data, Blue-bike data incomplete")
 })
 
+test("a malformed item in a feed is skipped; the rest of that feed and the others still merge", async () => {
+  const feed = createBikeFeed({
+    fetchJson: async (url) => {
+      if (url === FEED_URLS.donkeyLocations) return [null, KORENMARKT, 42]
+      if (url === FEED_URLS.donkeyAvailability) return ["12022", { station_id: "12022", num_bikes_available: 3 }, null]
+      if (url === FEED_URLS.bolt) return [null, { station_id: "b-1", name: "Veldstraat", lat: 51.0525, lon: 3.7233, num_bikes_available: 1 }]
+      return [[], null]
+    },
+  })
+  const answer = await feed.current()
+  assert.deepEqual(
+    answer.stations.map((s) => [stationKey(s), s.available]),
+    [
+      ["bikes:donkey:12022", 3],
+      ["bikes:bolt:b-1", 1],
+    ],
+  )
+  assert.deepEqual(answer.feeds, { donkey: "ok", bolt: "ok", "blue-bike": "ok" })
+})
+
 test("without Donkey Republic's availability its stations show 0 and its data is incomplete", async () => {
   const feed = createBikeFeed({
     fetchJson: async (url) => {
@@ -203,7 +223,8 @@ test("an answer is checked: malformed stations dropped, unknown feeds missing", 
 test("the notice is quiet when all is well, and names what is missing or old", () => {
   const ok: BikesAnswer = { time: "2026-11-22T19:00:00Z", stations: [], feeds: { donkey: "ok", bolt: "ok", "blue-bike": "ok" } }
   const t = Date.parse(ok.time)
-  assert.equal(bikesNotice(null, "live", t), null)
+  assert.equal(bikesNotice(null, "fixture", t), null)
+  assert.equal(bikesNotice(null, "live", t), "Shared bikes: no data yet, retrying")
   assert.equal(bikesNotice(ok, "fixture", t + 30 * 86_400_000), null, "a fixture's age is not news")
   assert.equal(bikesNotice(ok, "live", t + 4 * 60_000), null)
   assert.equal(bikesNotice(ok, "live", t + 10 * 60_000), "Shared bikes: data is 10 min old")
@@ -244,6 +265,46 @@ test("the layer draws one bar per station, picks it by its id and highlights the
     layer.select?.("garage:vrijdagmarkt")
     bars.getColorAt(index, color)
     assert.equal(color.getHex(), OPERATOR_COLORS.donkey)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test("live: a failed first request is retried, and the notice clears once data arrives", async (t) => {
+  const time = Date.parse(fixture().time)
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: time })
+  const realFetch = globalThis.fetch
+  const requested: string[] = []
+  globalThis.fetch = (async (url: string) => {
+    requested.push(String(url))
+    if (requested.length === 1) return new Response("unavailable", { status: 503 })
+    return new Response(readFileSync(FIXTURE_PATH, "utf8"), { headers: { "Content-Type": "application/json" } })
+  }) as typeof fetch
+  // Lets the retry's fetch and JSON parsing settle; setImmediate is not mocked.
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve))
+  }
+  try {
+    const layer = createBikesLayer()
+    await layer.init({ mode: "live", time: null })
+    assert.deepEqual(requested, ["/api/bikes"])
+    assert.equal(layer.notice?.(), "Shared bikes: no data yet, retrying")
+    assert.equal(layer.group.getObjectByName("bike-bars"), undefined)
+
+    t.mock.timers.tick(10_000)
+    await settle()
+    assert.deepEqual(requested, ["/api/bikes", "/api/bikes"])
+    assert.equal(layer.notice?.(), null)
+    const bars = layer.group.getObjectByName("bike-bars") as InstancedMesh
+    assert.equal(bars.count, fixture().stations.length)
+
+    // After that it refreshes once a minute.
+    t.mock.timers.tick(59_999)
+    await settle()
+    assert.equal(requested.length, 2)
+    t.mock.timers.tick(1)
+    await settle()
+    assert.equal(requested.length, 3)
   } finally {
     globalThis.fetch = realFetch
   }

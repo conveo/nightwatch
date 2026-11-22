@@ -51,6 +51,8 @@ export const SOURCES: Record<DataMode, string> = {
   live: "/api/bikes",
 }
 const REFRESH_MS = 60_000
+// Until live data has arrived once, a failed request is retried sooner.
+const RETRY_MS = 10_000
 // Live data older than this (refreshes failing) is reported in the notice.
 const STALE_MS = 5 * 60_000
 
@@ -97,10 +99,11 @@ export function parseBikesAnswer(body: unknown): BikesAnswer {
   }
 }
 
-// The HUD line: an operator whose data is missing or incomplete, live data that has
-// not refreshed for a while, and recorded mode, which has no bike snapshots.
+// The HUD line: live data that has not arrived yet or not refreshed for a while, an
+// operator whose data is missing or incomplete, and recorded mode, which has no bike
+// snapshots.
 export function bikesNotice(answer: BikesAnswer | null, mode: DataMode, nowMs: number): string | null {
-  if (answer == null) return null
+  if (answer == null) return mode === "live" ? "Shared bikes: no data yet, retrying" : null
   const parts: string[] = []
   if (mode === "recorded") parts.push("no recorded data, showing the sample")
   for (const op of OPERATOR_LIST) {
@@ -186,12 +189,19 @@ export function createBikesLayer(): Layer {
     group,
     async init(ctx) {
       mode = ctx.mode
-      draw(await load(SOURCES[mode]))
-      if (mode !== "live") return
-      setInterval(() => {
-        // A failed refresh keeps the last data; the notice reports its age.
-        load(SOURCES.live).then(draw, () => {})
-      }, REFRESH_MS)
+      if (mode !== "live") return draw(await load(SOURCES[mode]))
+      // Live data refreshes every minute, and a failed request, the first one included,
+      // is retried: until data arrives the notice says so; after that a failed refresh
+      // keeps the last data and the notice reports its age.
+      const refresh = async (): Promise<void> => {
+        try {
+          draw(await load(SOURCES.live))
+        } catch {
+          // Reported by notice(); the next attempt is already scheduled below.
+        }
+        setTimeout(refresh, answer == null ? RETRY_MS : REFRESH_MS)
+      }
+      await refresh()
     },
     notice() {
       return bikesNotice(answer, mode, Date.now())
