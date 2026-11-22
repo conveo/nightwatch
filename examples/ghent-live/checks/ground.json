@@ -1,0 +1,24 @@
+{
+  "view": "#cam=0,2200,1&tgt=0,0,0",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium), rendered in a web browser and seen from straight above with north up. A red ring marks the Belfry in the middle of the view. This view shows the ground layer only: land, water and the streets.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "river",
+      "instructions": "A river runs through the city: a continuous, winding band of water crosses the map.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "medieval_streets",
+      "instructions": "The streets form an irregular, medieval pattern of narrow, curving streets of varying width, not a grid.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "no_square_grid",
+      "instructions": "No plain square grid is visible: there are no evenly spaced, straight grid lines across the ground.",
+      "min": 0.8
+    }
+  ]
+}
