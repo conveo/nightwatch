@@ -611,7 +611,7 @@ const TEXTURE_PX = 2048
 const ALPHA = { sector: 0.36, "car-free": 0.46, pedestrian: 0.46 } as const
 // At night the zones dim with the city, so the lit towers, not the pavement, are the
 // brightest thing in a street-level view.
-const NIGHT_DIM = 0.4
+const NIGHT_DIM = 0.2
 // A zone's name gives way to a landmark's label (src/ui/labels.ts) or a panel it
 // would come closer to than this, so no two labels overlap.
 const LABEL_GAP_PX = 16

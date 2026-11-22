@@ -150,6 +150,11 @@ aside#ask.ask-panel[data-state="closed"] {
   color: var(--ask-soft);
 }
 
+.ask-notice {
+  font-size: 24px;
+  color: #ffd9a0;
+}
+
 .ask-error {
   font-size: 28px;
   color: #ff9b8a;

@@ -10,8 +10,7 @@ import type { Layer } from "./types.ts"
 // down: fully drawn from BEAM_FULL_M up, gone below BEAM_GONE_M (camera height, m).
 export const BEAM_FULL_M = 120
 export const BEAM_GONE_M = 50
-const BEAM_OPACITY = 0.85
-const GHOST_OPACITY = 0.55
+const BEAM_OPACITY = 0.65
 
 export function beamOpacity(cameraHeight: number): number {
   const t = (cameraHeight - BEAM_GONE_M) / (BEAM_FULL_M - BEAM_GONE_M)
@@ -21,29 +20,9 @@ export function beamOpacity(cameraHeight: number): number {
 export function createOriginLayer(): Layer {
   const group = new Group()
   group.name = "origin"
-  const ringGeometry = new RingGeometry(26, 34, 64)
-  const ring = new Mesh(ringGeometry, new MeshBasicMaterial({ color: 0xff3b30, side: DoubleSide }))
+  const ring = new Mesh(new RingGeometry(26, 34, 64), new MeshBasicMaterial({ color: 0xff3b30, side: DoubleSide }))
   ring.rotation.x = -Math.PI / 2
   ring.position.y = 0.6
-  // The buildings around the Belfry hide most of the ring from the air, and what shows
-  // looks like the circulation plan's red posts. A fainter copy drawn through them
-  // keeps the whole circle in view; like the beam, it fades out near the street.
-  const ghostMaterial = new MeshBasicMaterial({
-    color: 0xff3b30,
-    side: DoubleSide,
-    transparent: true,
-    opacity: 0,
-    depthTest: false,
-    depthWrite: false,
-  })
-  const ghost = new Mesh(ringGeometry, ghostMaterial)
-  ghost.rotation.x = -Math.PI / 2
-  ghost.position.y = 0.6
-  ghost.renderOrder = 10
-  ghost.frustumCulled = false
-  ghost.onBeforeRender = (_renderer, _scene, camera) => {
-    ghostMaterial.opacity = (GHOST_OPACITY / BEAM_OPACITY) * beamOpacity(camera.position.y)
-  }
   // Plain (not additive) blending, so the beam reads red against a bright day sky as
   // well as at night.
   const beamMaterial = new MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: BEAM_OPACITY, depthWrite: false })
@@ -58,7 +37,7 @@ export function createOriginLayer(): Layer {
     id: "origin",
     group,
     async init() {
-      group.add(ring, ghost, beam)
+      group.add(ring, beam)
     },
     pick(ray: Raycaster) {
       return ray.intersectObject(ring, false).length > 0 ? "place:belfort" : null

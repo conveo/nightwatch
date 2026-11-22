@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { describe, test } from "node:test"
 import type { BikeStationState, CityStateProvider, GarageState } from "../server/city-state.ts"
@@ -174,5 +175,30 @@ describe("live city state", () => {
     const t7Slugs = FIXTURE_CITY_STATE.garages.map((g) => g.slug).sort()
     for (const slug of t7Slugs) assert.ok(t5Slugs.includes(slug), `garage:${slug} is not in public/fixtures/parking.json`)
     assert.deepEqual(t7Slugs, t5Slugs)
+  })
+})
+
+// test/fixtures/stage.png is the Street-level preset at night with a parking question
+// (checks/stage.json's "view") on the integrated app, and test/recordings/ holds the
+// Decisions API's real answers for it, so CI re-checks it with no key and no network.
+describe("stage view", () => {
+  test("the recorded stage screenshot passes checks/stage.json", () => {
+    const env = { ...process.env }
+    delete env.OPENAI_API_KEY
+    const run = spawnSync(
+      process.execPath,
+      ["scripts/check-visual.ts", "test/fixtures/stage.png", "checks/stage.json", "--replay"],
+      { encoding: "utf8", env },
+    )
+    assert.equal(run.status, 0, run.stderr)
+    assert.equal(run.stdout.match(/^PASS /gm)?.length, 3, run.stdout)
+  })
+
+  test("checks/stage.json describes the Street-level preset at night with a parking question", () => {
+    const checks = JSON.parse(readFileSync("checks/stage.json", "utf8")) as { view: string; checks: Array<{ min?: number }> }
+    const view = new URLSearchParams(checks.view.replace(/^#/, ""))
+    assert.equal(view.get("light"), "night")
+    assert.equal(view.get("ask"), "park:gravensteen")
+    assert.ok(checks.checks.every((c) => (c.min ?? 0) >= 0.8))
   })
 })

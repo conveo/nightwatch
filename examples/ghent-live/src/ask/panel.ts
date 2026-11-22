@@ -205,6 +205,7 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
       el("p", "ask-question", answer.question),
       shownAnswer,
       el("p", "ask-detail", answer.detail),
+      ...(answer.notice == null ? [] : [el("p", "ask-notice", answer.notice)]),
       el("p", "ask-meta", sourceLine(answer)),
     )
   }
