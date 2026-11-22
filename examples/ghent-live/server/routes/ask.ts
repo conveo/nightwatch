@@ -32,7 +32,14 @@ import { ORIGIN, toLocal, type LatLon } from "../../src/geo.ts"
 import { readJson, sendJson, type Route } from "../api.ts"
 import type { CityState, CityStateProvider, GarageState } from "../city-state.ts"
 import { fixtureCityState } from "../city-state-fixture.ts"
-import { DECISIONS_MODEL, decide, recordingKey, type DecisionRequest, type DecisionResponse } from "../decisions.ts"
+import {
+  DECISIONS_MODEL,
+  DECISIONS_URL,
+  decide,
+  recordingKey,
+  type DecisionRequest,
+  type DecisionResponse,
+} from "../decisions.ts"
 
 export const RECORDINGS_FILE = fileURLToPath(new URL("../ask-recordings.json", import.meta.url))
 
@@ -286,12 +293,40 @@ function upstreamError(error: unknown): AskError {
   return new AskError(502, status == null ? "Could not reach the Decisions API." : `The Decisions API answered HTTP ${status}.`)
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new AskError(504, `The Decisions API did not answer within ${ms / 1000} s.`)), ms)
+// decide() in server/decisions.ts takes no AbortSignal, so a request that timed out
+// would keep its connection open; this is the same live call, abortable.
+export async function decideLive(
+  request: DecisionRequest,
+  options: { apiKey: string; signal: AbortSignal },
+): Promise<DecisionResponse> {
+  const res = await fetch(DECISIONS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${options.apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal: options.signal,
   })
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Decisions API answered HTTP ${res.status}`)
+  return JSON.parse(text) as DecisionResponse
+}
+
+// Runs `run` with a signal that aborts after `ms`, and stops waiting at the same time.
+async function withDeadline<T>(run: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
+  const abort = new AbortController()
+  let timer: NodeJS.Timeout | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new AskError(504, `The Decisions API did not answer within ${ms / 1000} s.`)
+      // Settle first, so the race reports the timeout and not the client's abort.
+      reject(error)
+      abort.abort(error)
+    }, ms)
+  })
+  try {
+    return await Promise.race([run(abort.signal), deadline])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export type AskOptions = {
@@ -299,16 +334,19 @@ export type AskOptions = {
   // The key, read on each request so a server started without one can be given one.
   apiKey?: () => string | undefined
   recordingsFile?: string
-  // The Decisions API client; tests pass a fake one.
-  decide?: (request: DecisionRequest, options: { apiKey: string }) => Promise<DecisionResponse>
+  // The Decisions API client; tests pass a fake one. It must stop when `signal` aborts.
+  decide?: (request: DecisionRequest, options: { apiKey: string; signal: AbortSignal }) => Promise<DecisionResponse>
   timeoutMs?: number
 }
 
 export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Partial<AskRequest>): Promise<AskAnswer> } {
   const provider = options.provider ?? fixtureCityState
   const apiKey = options.apiKey ?? (() => env.OPENAI_API_KEY)
-  const ask = options.decide ?? ((request, o) => decide(request, o))
+  const ask = options.decide ?? decideLive
   const cache = new Map<string, { at: number; response: DecisionResponse }>()
+  // One upstream call per question and data at a time: a shared view opened twice
+  // before the first answer arrives waits for that answer instead of paying twice.
+  const inflight = new Map<string, Promise<DecisionResponse>>()
   let recordings: Promise<Recordings> | null = null
 
   async function answer(body: Partial<AskRequest>): Promise<AskAnswer> {
@@ -340,16 +378,27 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
       }
       return answerFrom(plan, recorded, meta("recorded"))
     }
+    let pending = inflight.get(key)
+    if (pending == null) {
+      const call = withDeadline((signal) => ask(plan.request, { apiKey: secret, signal }), options.timeoutMs ?? LIVE_TIMEOUT_MS)
+        .then((response) => {
+          // Only an answer the panel can show is kept; a refusal is asked again next time.
+          answerFrom(plan, response, meta("live"))
+          if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!)
+          cache.set(key, { at: Date.now(), response: { model: response.model, answers: response.answers } })
+          return response
+        })
+        .finally(() => inflight.delete(key))
+      inflight.set(key, call)
+      pending = call
+    }
     let response: DecisionResponse
     try {
-      response = await withTimeout(ask(plan.request, { apiKey: secret }), options.timeoutMs ?? LIVE_TIMEOUT_MS)
+      response = await pending
     } catch (error) {
       throw upstreamError(error)
     }
-    const result = answerFrom(plan, response, meta("live"))
-    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!)
-    cache.set(key, { at: Date.now(), response: { model: response.model, answers: response.answers } })
-    return result
+    return answerFrom(plan, response, meta("live"))
   }
 
   return {
@@ -359,7 +408,9 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
     async handle(req, res) {
       let body: Partial<AskRequest>
       try {
-        body = await readJson<Partial<AskRequest>>(req, 4 * 1024)
+        const parsed = await readJson<unknown>(req, 4 * 1024)
+        if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object")
+        body = parsed as Partial<AskRequest>
       } catch {
         const failure: AskFailure = { ask: "", question: null, error: 'Send JSON like {"ask": "park:gravensteen"}.' }
         return sendJson(res, 400, failure)

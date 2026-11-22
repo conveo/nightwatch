@@ -206,6 +206,53 @@ test("the key and the upstream body never reach the browser", async () => {
   }
 })
 
+test("a body that is not a JSON object is a plain 400", async () => {
+  const { post, close } = await serve(createAskRoute({ apiKey: noKey }))
+  try {
+    for (const body of [null, [], 42, "park:gravensteen"]) {
+      const res = await post(body)
+      assert.equal(res.status, 400, JSON.stringify(body))
+      assert.match((JSON.parse(res.text) as AskFailure).error, /Send JSON like/)
+    }
+  } finally {
+    await close()
+  }
+})
+
+test("a timed-out upstream request is aborted, not left running", async () => {
+  let aborted: unknown = null
+  const hanging = (_request: DecisionRequest, options: { signal: AbortSignal }) =>
+    new Promise<DecisionResponse>((_, reject) => {
+      options.signal.addEventListener("abort", () => {
+        aborted = options.signal.reason
+        reject(new Error("aborted"))
+      })
+    })
+  const route = createAskRoute({ apiKey: () => "sk-test", decide: hanging, timeoutMs: 50 })
+  await assert.rejects(route.ask({ ask: "busy:now" }), (e: AskError) => e.status === 504)
+  assert.ok(aborted instanceof AskError && aborted.status === 504)
+})
+
+test("the same question asked twice at once calls the API once", async () => {
+  let calls = 0
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => (release = resolve))
+  const slow = async (request: DecisionRequest): Promise<DecisionResponse> => {
+    calls++
+    await gate
+    return { model: "fake", answers: [{ type: "predicate", name: request.questions[0]!.name, probability: 0.1 }] }
+  }
+  const route = createAskRoute({ apiKey: () => "sk-test", decide: slow })
+  const both = Promise.all([route.ask({ ask: "busy:now" }), route.ask({ ask: "busy:now" })])
+  release()
+  const [a, b] = await both
+  assert.equal(calls, 1)
+  assert.equal(a.answer, "No")
+  assert.equal(b.answer, "No")
+  assert.equal((await route.ask({ ask: "busy:now" })).source, "cached")
+  assert.equal(calls, 1)
+})
+
 test("the route is mounted with the others", async () => {
   const routes = await loadRoutes(fileURLToPath(new URL("../server/routes", import.meta.url)))
   assert.ok(routes.some((r) => r.method === "POST" && r.path === "/api/ask"))
