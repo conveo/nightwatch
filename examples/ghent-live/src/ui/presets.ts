@@ -59,10 +59,12 @@ export function poseFromEye(eye: Vec3, headingDeg: number, pitchDownDeg: number,
   }
 }
 
-// MapControls in main.ts keeps the camera at least this far from straight overhead of
-// its target (maxPolarAngle = PI / 2.05): every view looks at least ~2.2° down. A
-// preset that broke this would be moved by the controls and lose its round trip.
-export const MAX_POLAR_ANGLE = Math.PI / 2.05
+// The camera limits main.ts gives MapControls. The view may tilt up to 12° above the
+// horizon, as a person on the street looks up at a tower, and the camera never goes
+// below MIN_CAMERA_Y_M, so a drag cannot take it under the street. A preset outside
+// these limits would be moved by the controls and lose its round trip.
+export const MAX_POLAR_ANGLE = (102 * Math.PI) / 180
+export const MIN_CAMERA_Y_M = 1.5
 
 // The compass heading from one point to another (0 = north, 90 = east).
 export function headingTo(from: Vec3, to: Vec3): number {
@@ -71,8 +73,12 @@ export function headingTo(from: Vec3, to: Vec3): number {
 }
 
 const bridge = placeAt("sint-michielsbrug")
-// The eye: on the bridge's deck, 6 m above the street, by its north parapet.
-const streetEye: Vec3 = [bridge[0] + 0.9, 6, bridge[2] - 7.3]
+// The eye: on the bridge's deck, 6 m above the street, at its north-east corner,
+// where Sint-Baafs shows past the Korenmarkt's south corner. The view turns a little
+// right of the Belfry and tilts up, so the three towers fill the frame.
+const streetEye: Vec3 = [bridge[0] + 8.9, 6, bridge[2] - 10.3]
+const STREET_TURN_DEG = 2
+const STREET_TILT_UP_DEG = 6
 
 export const PRESETS: readonly Preset[] = [
   { id: "belfort", name: "Belfort", ...poseLookingAt(placeAt("belfort", 40), 40, 330, 190) },
@@ -83,10 +89,9 @@ export const PRESETS: readonly Preset[] = [
   // The landmarks lie north-west of the Belfry, so the view centres on them, slightly
   // tilted so the buildings still read as 3D.
   { id: "above", name: "From above", ...poseLookingAt([-100, 0, -140], 0, 200, 850) },
-  // On the Sint-Michielsbrug at eye height, looking east along the Korenmarkt: the
-  // towers of Sint-Niklaas, the Belfry and Sint-Baafs stand in a row. From the north
-  // side of the bridge, Sint-Baafs shows past the Korenmarkt's south corner.
-  { id: "street", name: "Street level", ...poseFromEye(streetEye, headingTo(streetEye, placeAt("belfort")) + 1.5, 2.4, 80) },
+  // On the Sint-Michielsbrug at eye height, looking east along the Korenmarkt and up
+  // at the towers of Sint-Niklaas, the Belfry and Sint-Baafs, which stand in a row.
+  { id: "street", name: "Street level", ...poseFromEye(streetEye, headingTo(streetEye, placeAt("belfort")) + STREET_TURN_DEG, -STREET_TILT_UP_DEG, 300) },
 ]
 
 export function presetById(id: string): Preset | null {

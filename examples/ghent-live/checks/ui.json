@@ -29,7 +29,7 @@
     {
       "type": "predicate",
       "name": "no_overlap",
-      "instructions": "No two labels, buttons or panels overlap each other.",
+      "instructions": "No label overlaps another label, the title, a panel or a button; labels and panels drawn over the 3D scene are expected.",
       "min": 0.8
     },
     {

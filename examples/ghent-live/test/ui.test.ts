@@ -2,11 +2,13 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { test } from "node:test"
 import { PerspectiveCamera, Vector3 } from "three"
+import { MapControls } from "three/addons/controls/MapControls.js"
 import { toLocal } from "../src/geo.ts"
 import { placeBySlug } from "../src/places.ts"
 import { layoutLabels, stemEnd, type LabelInput, type Rect } from "../src/ui/labels.ts"
 import {
   MAX_POLAR_ANGLE,
+  MIN_CAMERA_Y_M,
   PRESETS,
   applyPreset,
   easeInOutCubic,
@@ -83,8 +85,35 @@ test("applying a preset copies its camera, so moving the view later leaves the p
   assert.notEqual(preset.cam[0], 12345)
 })
 
-test("no preset breaks the controls' limit on looking up, so the controls never move it", () => {
-  for (const preset of PRESETS) assert.ok(polarAngle(preset) < MAX_POLAR_ANGLE, `${preset.id}: ${polarAngle(preset) * DEG}°`)
+test("no preset breaks the controls' limits, so the controls never move it", () => {
+  for (const preset of PRESETS) {
+    assert.ok(polarAngle(preset) < MAX_POLAR_ANGLE, `${preset.id}: ${polarAngle(preset) * DEG}°`)
+    assert.ok(preset.cam[1] >= MIN_CAMERA_Y_M, `${preset.id} is above the street`)
+  }
+})
+
+test("each preset, read back from the URL, stays exactly where it is under the app's MapControls", () => {
+  // The same controls and limits as main.ts; update() clamps a view that breaks them.
+  for (const preset of PRESETS) {
+    const view = parseViewState(serializeViewState(applyPreset(DEFAULT_VIEW, preset)))
+    const camera = new PerspectiveCamera(45, 16 / 9, 1, 20000)
+    // No DOM element: the controls only do their maths here.
+    const controls = new MapControls(camera)
+    controls.maxPolarAngle = MAX_POLAR_ANGLE
+    camera.position.set(...view.cam)
+    controls.target.set(...view.tgt)
+    controls.update()
+    for (let i = 0; i < 3; i++) {
+      assert.ok(Math.abs(camera.position.getComponent(i) - preset.cam[i]!) < 1e-6, `${preset.id} camera`)
+      assert.ok(Math.abs(controls.target.getComponent(i) - preset.tgt[i]!) < 1e-6, `${preset.id} target`)
+    }
+  }
+})
+
+test("Street level looks up at the towers, which the old limit (level or below) forbade", () => {
+  const street = presetById("street")!
+  assert.ok(street.tgt[1] >= 30 && street.tgt[1] <= 45, `target ${street.tgt[1]} m up`)
+  assert.ok(polarAngle(street) > Math.PI / 2, "the view tilts above the horizon")
 })
 
 test("each landmark preset frames its landmark", () => {
@@ -190,8 +219,8 @@ test("layer switches write `layers`, and every layer on is no `layers` at all", 
 
 const VIEWPORT = { w: 1600, h: 900 }
 
-function label(id: string, x: number, y: number, body: Rect[] = []): LabelInput {
-  return { id, anchor: { x, y }, body, w: 160, h: 40 }
+function label(id: string, x: number, y: number, foot: Rect | null = null, shafts: Rect[] = []): LabelInput {
+  return { id, anchor: { x, y }, foot, shafts, w: 160, h: 40 }
 }
 
 function rects(inputs: LabelInput[], layout: ReturnType<typeof layoutLabels>): Rect[] {
@@ -240,7 +269,7 @@ test("labels keep clear of the title and the panels, and of the screen's edges",
 })
 
 test("a dot off screen or behind the camera hides its label", () => {
-  const layout = layoutLabels([label("left", -10, 300), { id: "behind", anchor: null, body: [], w: 160, h: 40 }], VIEWPORT)
+  const layout = layoutLabels([label("left", -10, 300), { id: "behind", anchor: null, foot: null, shafts: [], w: 160, h: 40 }], VIEWPORT)
   assert.equal(layout.get("left"), null)
   assert.equal(layout.get("behind"), null)
 })
@@ -249,7 +278,7 @@ test("seen from overhead, a label sits beside its landmark's foot, not on it", (
   // The tower's top falls inside its own foot: the Belfry's red ring, from above.
   const foot: Rect = { x: 760, y: 410, w: 80, h: 80 }
   // The Stadhuis, seen at an angle: its dot (25 m up) is above its foot.
-  const inputs = [label("belfort", 802, 444, [foot]), label("stadhuis", 810, 280, [{ x: 780, y: 300, w: 60, h: 60 }])]
+  const inputs = [label("belfort", 802, 444, foot), label("stadhuis", 810, 280, { x: 780, y: 300, w: 60, h: 60 })]
   const layout = layoutLabels(inputs, VIEWPORT)
   const belfort = layout.get("belfort")!
   assert.equal(belfort.pin, false, "no dot or stem inside the foot")
@@ -260,25 +289,31 @@ test("seen from overhead, a label sits beside its landmark's foot, not on it", (
   }
 })
 
-test("beside a tower, a label stands clear of the tower's shaft", () => {
-  // Seen from the street: the Belfry's dot lies on its shaft (the base's red beam
-  // rises above the tower), at the top of the screen, so the label cannot go above.
-  const shaft: Rect = { x: 740, y: -200, w: 20, h: 600 }
-  const layout = layoutLabels([label("belfort", 750, 60, [shaft])], VIEWPORT)
+test("beside a tower, a label stands clear of the tower's shaft, on a stem from its top", () => {
+  // Seen from the street: the Belfry's dot lies on its own shaft (the base's red beam
+  // rises above the tower), so the label cannot go above it and stands beside it.
+  const shaft: Rect = { x: 744, y: -200, w: 12, h: 600 }
+  const layout = layoutLabels([label("belfort", 750, 120, null, [shaft])], VIEWPORT)
   const at = layout.get("belfort")!
-  assert.equal(at.pin, false)
+  assert.equal(at.pin, true, "a dot on its own tower keeps its stem")
   assert.ok(!intersects({ x: at.x, y: at.y, w: 160, h: 40 }, shaft))
-  assert.ok(Math.abs(at.y + 20 - 60) < 1, "level with the tower's top")
-  assert.ok(at.x >= 760 && at.x < 800, "just beside the shaft")
+  assert.ok(Math.abs(at.y + 20 - 120) < 1, "level with the tower's top")
+  assert.ok(at.x >= 756 && at.x < 790, "just beside the shaft")
+})
+
+test("a dot on another landmark's shaft gives up its stem", () => {
+  const shaft: Rect = { x: 740, y: 100, w: 20, h: 500 }
+  const layout = layoutLabels([label("tower", 750, 300, null, [shaft]), label("behind", 758, 200)], VIEWPORT)
+  assert.equal(layout.get("behind")?.pin, false)
 })
 
 test("a label that could only hang far from its dot is hidden instead", () => {
   // The dot is on a tall tower whose neighbours fill both sides, so the label could
   // only go far above or below the tower, further than a stem reaches.
   const shaft: Rect = { x: 780, y: 100, w: 40, h: 700 }
-  const left = label("left", 650, 450, [{ x: 560, y: 300, w: 210, h: 300 }])
-  const right = label("right", 950, 450, [{ x: 830, y: 300, w: 210, h: 300 }])
-  const layout = layoutLabels([label("lost", 800, 450, [shaft]), left, right], VIEWPORT)
+  const left = label("left", 650, 450, { x: 560, y: 300, w: 210, h: 300 })
+  const right = label("right", 950, 450, { x: 830, y: 300, w: 210, h: 300 })
+  const layout = layoutLabels([label("lost", 800, 450, null, [shaft]), left, right], VIEWPORT)
   assert.equal(layout.get("lost"), null)
 })
 
