@@ -64,7 +64,15 @@ export function poseFromEye(eye: Vec3, headingDeg: number, pitchDownDeg: number,
 // preset that broke this would be moved by the controls and lose its round trip.
 export const MAX_POLAR_ANGLE = Math.PI / 2.05
 
+// The compass heading from one point to another (0 = north, 90 = east).
+export function headingTo(from: Vec3, to: Vec3): number {
+  const h = Math.atan2(to[0] - from[0], -(to[2] - from[2])) / DEG
+  return (h + 360) % 360
+}
+
 const bridge = placeAt("sint-michielsbrug")
+// The eye: on the bridge's deck, 6 m above the street, by its north parapet.
+const streetEye: Vec3 = [bridge[0] + 0.9, 6, bridge[2] - 7.3]
 
 export const PRESETS: readonly Preset[] = [
   { id: "belfort", name: "Belfort", ...poseLookingAt(placeAt("belfort", 40), 40, 330, 190) },
@@ -76,8 +84,9 @@ export const PRESETS: readonly Preset[] = [
   // tilted so the buildings still read as 3D.
   { id: "above", name: "From above", ...poseLookingAt([-100, 0, -140], 0, 200, 850) },
   // On the Sint-Michielsbrug at eye height, looking east along the Korenmarkt: the
-  // towers of Sint-Niklaas, the Belfry and Sint-Baafs stand in a row.
-  { id: "street", name: "Street level", ...poseFromEye([bridge[0] - 8, 5, bridge[2]], 96, 2.6, 80) },
+  // towers of Sint-Niklaas, the Belfry and Sint-Baafs stand in a row. From the north
+  // side of the bridge, Sint-Baafs shows past the Korenmarkt's south corner.
+  { id: "street", name: "Street level", ...poseFromEye(streetEye, headingTo(streetEye, placeAt("belfort")) + 1.5, 2.4, 80) },
 ]
 
 export function presetById(id: string): Preset | null {
