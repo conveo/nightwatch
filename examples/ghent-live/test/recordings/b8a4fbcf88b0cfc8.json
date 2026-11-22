@@ -3,51 +3,41 @@
   "answers": [
     {
       "type": "predicate",
-      "name": "preset_buttons",
+      "name": "three_towers",
+      "probability": 0.88
+    },
+    {
+      "type": "predicate",
+      "name": "eye_level",
       "probability": 1
     },
     {
       "type": "predicate",
-      "name": "light_and_layers",
-      "probability": 1
-    },
-    {
-      "type": "predicate",
-      "name": "landmark_labels",
-      "probability": 1
-    },
-    {
-      "type": "predicate",
-      "name": "title_clear",
-      "probability": 1
-    },
-    {
-      "type": "predicate",
-      "name": "no_overlap",
-      "probability": 1
+      "name": "tower_labels",
+      "probability": 0.99
     },
     {
       "type": "score",
       "name": "stage_readability",
-      "score": 1.72,
+      "score": 1.43,
       "probabilities": [
         {
           "value": 0,
           "label": "poor",
-          "probability": 0.02
+          "probability": 0.08
         },
         {
           "value": 1,
           "label": "acceptable",
-          "probability": 0.24
+          "probability": 0.41
         },
         {
           "value": 2,
           "label": "good",
-          "probability": 0.74
+          "probability": 0.51
         }
       ],
-      "confidence": 0.58
+      "confidence": 0.15
     }
   ]
 }

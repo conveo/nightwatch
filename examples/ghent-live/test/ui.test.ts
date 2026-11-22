@@ -318,7 +318,8 @@ test("a label that could only hang far from its dot is hidden instead", () => {
   assert.equal(layout.get("lost"), null)
 })
 
-// test/fixtures/ui-*.png are real screenshots of presets and test/recordings/ holds
+// test/fixtures/ui-*.png are real screenshots of two presets (Street level on a merge
+// with the buildings layer, which draws the towers) and test/recordings/ holds
 // the Decisions API's answers for them, so CI re-checks them with no key.
 function checkVisual(png: string, checks: string) {
   const env = { ...process.env }
@@ -329,5 +330,11 @@ function checkVisual(png: string, checks: string) {
 test("the recorded From above screenshot passes the checks every preset passes", () => {
   const run = checkVisual("test/fixtures/ui-above.png", "checks/ui.json")
   assert.equal(run.status, 0, run.stdout + run.stderr)
-  assert.equal(run.stdout.match(/^PASS /gm)?.length, 6, run.stdout)
+  assert.equal(run.stdout.match(/^PASS /gm)?.length, 8, run.stdout)
+})
+
+test("the recorded Street level screenshot shows three towers in a row", () => {
+  const run = checkVisual("test/fixtures/ui-street.png", "checks/ui-street.json")
+  assert.equal(run.status, 0, run.stdout + run.stderr)
+  assert.equal(run.stdout.match(/^PASS /gm)?.length, 4, run.stdout)
 })

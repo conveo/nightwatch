@@ -79,7 +79,7 @@ const bridge = placeAt("sint-michielsbrug")
 // and tilts up, so the three towers fill the frame.
 const streetEye: Vec3 = [bridge[0] + 8.9, 14, bridge[2] - 10.3]
 const STREET_TURN_DEG = 2
-const STREET_TILT_UP_DEG = 6
+const STREET_TILT_UP_DEG = 5
 
 export const PRESETS: readonly Preset[] = [
   { id: "belfort", name: "Belfort", ...poseLookingAt(placeAt("belfort", 40), 40, 330, 190) },

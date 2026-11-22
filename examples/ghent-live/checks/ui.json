@@ -28,8 +28,20 @@
     },
     {
       "type": "predicate",
-      "name": "no_overlap",
-      "instructions": "No label overlaps another label, the title, a panel or a button; labels and panels drawn over the 3D scene are expected.",
+      "name": "labels_apart",
+      "instructions": "No two labels overlap each other.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "labels_clear_of_title",
+      "instructions": "No label overlaps the title \"Ghent, live\".",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "labels_clear_of_controls",
+      "instructions": "No label overlaps the panel on the left or the row of buttons at the bottom.",
       "min": 0.8
     },
     {
