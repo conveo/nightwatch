@@ -1,0 +1,20 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "river",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "medieval_streets",
+      "probability": 0.95
+    },
+    {
+      "type": "predicate",
+      "name": "no_square_grid",
+      "probability": 1
+    }
+  ]
+}
