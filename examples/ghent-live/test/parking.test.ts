@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import type { ServerResponse } from "node:http"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { test } from "node:test"
 import { Raycaster, Vector3 } from "three"
 import type { GarageState } from "../server/city-state.ts"
@@ -19,7 +21,7 @@ import {
   type ParkingSnapshot,
   type SnapshotFile,
 } from "../server/routes/parking.ts"
-import { addSnapshot, formatFixture, formatSnapshots } from "../scripts/record-parking.ts"
+import { addSnapshot, formatFixture, formatSnapshots, loadSnapshots, writeAtomic } from "../scripts/record-parking.ts"
 import { toLocal } from "../src/geo.ts"
 import {
   columnSpec,
@@ -204,6 +206,34 @@ test("the layer's notice follows the clock in live mode", async () => {
   assert.equal(live.notice?.(), "parking data is 60 minutes old")
 })
 
+test("live mode keeps retrying after a failed first read, and draws once it answers", async () => {
+  const fixture = JSON.parse(readFileSync("public/fixtures/parking.json", "utf8")) as ParkingSnapshot
+  const newest = Math.max(...fixture.garages.map((g) => Date.parse(g.updated)))
+  const files: Record<string, unknown> = {}
+  const layer = createParkingLayer({ fetch: fakeFetch(files), now: () => newest + 60_000 })
+  const refresh = await initLive(layer) // the first read fails, and init still resolves
+  assert.equal(layer.garages().length, 0)
+  assert.equal(layer.notice?.(), "parking data unavailable, retrying every minute (/api/parking answered 404)")
+  files["/api/parking"] = fixture
+  refresh()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(layer.garages().length, 5)
+  assert.equal(layer.notice?.(), null)
+  // A later failure keeps the data drawn; only its age can raise the notice.
+  delete files["/api/parking"]
+  refresh()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(layer.garages().length, 5)
+  assert.equal(layer.notice?.(), null)
+})
+
+test("fixture and recorded mode fail the layer when their file is missing", async () => {
+  await assert.rejects(createParkingLayer({ fetch: fakeFetch({}) }).init({ mode: "fixture", time: null }), /404/)
+  await assert.rejects(createParkingLayer({ fetch: fakeFetch({}) }).init({ mode: "recorded", time: null }), /404/)
+  const empty = createParkingLayer({ fetch: fakeFetch({ "/fixtures/parking/snapshots.json": { snapshots: {} } }) })
+  await assert.rejects(empty.init({ mode: "recorded", time: null }), /no recorded parking snapshot/)
+})
+
 test("recorded mode draws the snapshot nearest to t", async () => {
   const file: SnapshotFile = {
     snapshots: {
@@ -263,6 +293,37 @@ test("the live source reads the feed at most once a minute and keeps the last an
   assert.equal(calls, 2)
 })
 
+test("during an outage the feed is still read at most once a minute", async () => {
+  let clock = Date.parse("2026-11-22T18:50:00Z")
+  let calls = 0
+  let fail = true
+  const source = createParkingSource({
+    now: () => clock,
+    fetch: async () => {
+      calls++
+      if (fail) throw new Error("ECONNRESET")
+      return { ok: true, status: 200, json: async () => ({ results: [VRIJDAGMARKT] }) }
+    },
+  })
+  await assert.rejects(source.current(), /ECONNRESET/)
+  clock += 10_000
+  await assert.rejects(source.current(), /ECONNRESET/) // the same error, no new request
+  assert.equal(calls, 1)
+  clock += CACHE_MS
+  fail = false
+  const snapshot = await source.current()
+  assert.equal(calls, 2)
+  assert.equal(snapshot.garages.length, 1)
+  // With a cached answer, a failing feed is asked once a minute, and the answer keeps its time.
+  fail = true
+  for (let i = 0; i < 5; i++) {
+    clock += 30_000
+    assert.equal(await source.current(), snapshot)
+  }
+  assert.equal(calls, 4) // the feed was asked at 18:52:10 and 18:53:10; the other reads came from the cache
+  assert.equal(snapshot.time, "2026-11-22T18:51:10.000Z")
+})
+
 test("GET /api/parking answers the snapshot, or 502 when there is none", async () => {
   const ok = await call(parkingRoute({ current: async () => ({ time: "2026-11-22T18:50:00.000Z", garages: [garage()] }) }))
   assert.equal(ok.status, 200)
@@ -297,6 +358,19 @@ test("recorded snapshots keep the newest ones and survive a round trip through t
   for (const garages of Object.values(parsed.snapshots)) assert.ok(garages.length > 0)
 })
 
+test("the recorder starts a missing file empty, and stops on one that does not parse", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ghent-live-parking-"))
+  const path = join(dir, "nested", "snapshots.json")
+  assert.deepEqual(loadSnapshots(path), { snapshots: {} })
+  const file = addSnapshot({ snapshots: {} }, { time: "2026-11-22T18:00:00Z", garages: [garage()] }, 48)
+  writeAtomic(path, formatSnapshots(file))
+  assert.deepEqual(loadSnapshots(path), file)
+  writeFileSync(path, '{"snapshots": {"2026-11-22T18:00:00Z": [')
+  assert.throws(() => loadSnapshots(path), SyntaxError)
+  writeFileSync(path, '{"recordings": {}}')
+  assert.throws(() => loadSnapshots(path), /no "snapshots" object/)
+})
+
 test("the recorded parking screenshot passes its checks", () => {
   const env = { ...process.env }
   delete env.OPENAI_API_KEY
@@ -318,19 +392,22 @@ function fakeFetch(files: Record<string, unknown>): typeof fetch {
   }) as unknown as typeof fetch
 }
 
-// Live mode refreshes every minute; the test stops the timer it starts.
-async function initLive(layer: ReturnType<typeof createParkingLayer>): Promise<void> {
+// Live mode refreshes every minute. The test starts no timer: it gets the refresh
+// back and runs it when it wants.
+async function initLive(layer: ReturnType<typeof createParkingLayer>): Promise<() => void> {
   const realSetInterval = globalThis.setInterval
-  globalThis.setInterval = ((fn: () => void, ms: number) => {
-    const handle = realSetInterval(fn, ms)
-    clearInterval(handle)
-    return handle
-  }) as typeof setInterval
+  let refresh: (() => void) | null = null
+  globalThis.setInterval = ((fn: () => void) => {
+    refresh = fn
+    return 0
+  }) as unknown as typeof setInterval
   try {
     await layer.init({ mode: "live", time: null })
   } finally {
     globalThis.setInterval = realSetInterval
   }
+  assert.ok(refresh != null, "live mode schedules a refresh")
+  return refresh
 }
 
 async function call(route: ReturnType<typeof parkingRoute>): Promise<{ status: number; body: string }> {

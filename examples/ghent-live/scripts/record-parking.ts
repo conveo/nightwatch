@@ -9,7 +9,7 @@
 // time it was read. The file keeps the newest `--keep` snapshots (default 48), so it
 // stays a small fixture. The parking layer reads the snapshot nearest to `t`.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -46,13 +46,30 @@ export function addSnapshot(file: SnapshotFile, snapshot: ParkingSnapshot, keep:
   return { snapshots: Object.fromEntries(newest.map((t) => [t, all[t]!])) }
 }
 
-function load(path: string): SnapshotFile {
+// The recordings so far. Only a missing file starts empty: a file that does not
+// parse stops the recording, so its history is never replaced by one snapshot.
+export function loadSnapshots(path: string): SnapshotFile {
+  let text: string
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as SnapshotFile
-    return parsed.snapshots != null && typeof parsed.snapshots === "object" ? parsed : { snapshots: {} }
-  } catch {
-    return { snapshots: {} }
+    text = readFileSync(path, "utf8")
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { snapshots: {} }
+    throw error
   }
+  const parsed = JSON.parse(text) as Partial<SnapshotFile> | null
+  if (parsed?.snapshots == null || typeof parsed.snapshots !== "object" || Array.isArray(parsed.snapshots)) {
+    throw new Error(`${path}: no "snapshots" object`)
+  }
+  return parsed as SnapshotFile
+}
+
+// Written next to the file and renamed over it, so an interrupted write never
+// leaves half a file.
+export function writeAtomic(path: string, text: string): void {
+  mkdirSync(dirname(path), { recursive: true })
+  const tmp = `${path}.tmp`
+  writeFileSync(tmp, text)
+  renameSync(tmp, path)
 }
 
 if (process.argv[1] != null && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -79,14 +96,12 @@ if (process.argv[1] != null && resolve(process.argv[1]) === fileURLToPath(import
       continue
     }
     if (values.fixture) {
-      mkdirSync("public/fixtures", { recursive: true })
-      writeFileSync("public/fixtures/parking.json", formatFixture(snapshot))
+      writeAtomic("public/fixtures/parking.json", formatFixture(snapshot))
       console.log(`public/fixtures/parking.json: ${snapshot.garages.length} garages at ${snapshot.time}`)
       continue
     }
-    const file = addSnapshot(load(values.out), snapshot, Number(values.keep) || 48)
-    mkdirSync(dirname(values.out), { recursive: true })
-    writeFileSync(values.out, formatSnapshots(file))
+    const file = addSnapshot(loadSnapshots(values.out), snapshot, Number(values.keep) || 48)
+    writeAtomic(values.out, formatSnapshots(file))
     console.log(`${values.out}: ${snapshot.garages.length} garages at ${snapshot.time} (${Object.keys(file.snapshots).length} snapshots)`)
   }
 }

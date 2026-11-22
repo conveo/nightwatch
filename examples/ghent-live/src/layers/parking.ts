@@ -189,6 +189,8 @@ export function createParkingLayer(options: { fetch?: typeof fetch; now?: () => 
   let snapshotTime: string | null = null
   let light: Light = "day"
   let selected: string | null = null
+  // Live mode only: why the data could not be read, while none has been.
+  let unavailable: string | null = null
 
   function disposeColumn(c: Column): void {
     c.rim.geometry.dispose()
@@ -295,22 +297,29 @@ export function createParkingLayer(options: { fetch?: typeof fetch; now?: () => 
     async init(ctx: LayerContext) {
       mode = ctx.mode
       time = ctx.time
-      await load()
-      if (mode === "live") {
-        let busy = false
-        setInterval(() => {
-          if (busy) return
-          busy = true
-          // A failed refresh keeps the last data; the notice reports its age.
-          load()
-            .catch(() => {})
-            .finally(() => {
-              busy = false
-            })
-        }, REFRESH_MS)
+      // Fixture and recorded data are files: if one fails, the layer fails.
+      if (mode !== "live") return load()
+      // Live data is retried every minute, also when the first read fails, so the
+      // columns appear once /api/parking answers. A failed refresh keeps the last
+      // data, and the notice reports its age.
+      let busy = false
+      const refresh = async (): Promise<void> => {
+        if (busy) return
+        busy = true
+        try {
+          await load()
+          unavailable = null
+        } catch (error) {
+          if (snapshotTime == null) unavailable = (error as Error).message
+        } finally {
+          busy = false
+        }
       }
+      await refresh()
+      setInterval(() => void refresh(), REFRESH_MS)
     },
     notice() {
+      if (unavailable != null) return `parking data unavailable, retrying every minute (${unavailable})`
       const reference = mode === "recorded" ? Date.parse(time ?? snapshotTime ?? "") : now()
       return staleNotice(shown, mode, Number.isNaN(reference) ? now() : reference)
     },

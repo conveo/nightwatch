@@ -140,13 +140,16 @@ type Fetch = (url: string, init?: { signal?: AbortSignal; headers?: Record<strin
   json(): Promise<unknown>
 }>
 
-// The live source: one feed request per minute at most, however many callers, and
-// the last good answer when the feed fails.
+// The live source: one feed request per minute at most, however many callers and
+// whether the feed answers or not, and the last good answer when it fails.
 export function createParkingSource(options: { fetch?: Fetch; now?: () => number } = {}) {
   const fetchFeed = options.fetch ?? (globalThis.fetch as unknown as Fetch)
   const now = options.now ?? (() => Date.now())
   let cached: { at: number; snapshot: ParkingSnapshot } | null = null
   let inFlight: Promise<ParkingSnapshot> | null = null
+  // The last attempt, kept apart from the cache: a failed read is not retried for
+  // a minute, and the cached answer keeps its own age.
+  let attempt: { at: number; error: unknown } | null = null
 
   async function load(): Promise<ParkingSnapshot> {
     const res = await fetchFeed(FEED_URL, {
@@ -162,9 +165,27 @@ export function createParkingSource(options: { fetch?: Fetch; now?: () => number
   return {
     async current(): Promise<ParkingSnapshot> {
       if (cached != null && now() - cached.at < CACHE_MS) return cached.snapshot
-      inFlight ??= load().finally(() => {
-        inFlight = null
-      })
+      if (inFlight == null && attempt?.error != null && now() - attempt.at < CACHE_MS) {
+        if (cached != null) return cached.snapshot
+        throw attempt.error
+      }
+      if (inFlight == null) {
+        const at = now()
+        inFlight = load()
+          .then(
+            (snapshot) => {
+              attempt = { at, error: null }
+              return snapshot
+            },
+            (error: unknown) => {
+              attempt = { at, error }
+              throw error
+            },
+          )
+          .finally(() => {
+            inFlight = null
+          })
+      }
       try {
         return await inFlight
       } catch (error) {
