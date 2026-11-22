@@ -23,13 +23,18 @@ mkdirSync(profileDir, { recursive: true })
 const chrome = await launchChrome({ port, profileDir })
 console.log(`shared Chrome ready\nexport GHENT_LIVE_CDP=${chrome.cdpUrl}`)
 
+// Closing Chrome on purpose also fires its "exit" event; only an exit nobody asked
+// for is a failure.
+let stopping = false
 const stop = async () => {
+  stopping = true
   await chrome.close()
   exit(0)
 }
 process.on("SIGINT", stop)
 process.on("SIGTERM", stop)
 chrome.process.on("exit", (code) => {
+  if (stopping) return
   console.error(`Chrome exited (${code ?? "signal"})`)
   exit(1)
 })

@@ -190,7 +190,11 @@ requestAnimationFrame(() =>
       ready: true,
       layers: layers.map((l) => l.id),
       errors,
-      view,
+      // A getter, so readers see the current view after the camera moves or the
+      // selection changes, not the one the page started with.
+      get view() {
+        return view
+      },
       stats: () => ({ ...renderer.info.render, ...renderer.info.memory }),
     }
   }),
