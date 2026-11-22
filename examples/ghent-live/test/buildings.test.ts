@@ -60,6 +60,11 @@ test("outer rings come out clockwise seen from above and holes the other way, wh
   assert.ok(ringArea2(polygon![1]!) < 0, "hole is counter-clockwise (negative)")
 })
 
+test("a ring whose points round onto one straight line is dropped", () => {
+  const sliver = degrees([[0, 0], [10, 0.02], [20, 0]])
+  assert.deepEqual(footprintToLocal({ type: "Polygon", coordinates: [sliver] }), [])
+})
+
 test("points that round onto their neighbour and degenerate parts are dropped", () => {
   const polygons = footprintToLocal({
     type: "MultiPolygon",

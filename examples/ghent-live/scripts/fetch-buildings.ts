@@ -71,7 +71,7 @@ export function ringArea2(ring: Ring): number {
 
 // A GeoJSON ring in degrees ([lon, lat]) to a flat ring in scene metres, rounded to
 // 0.1 m: the closing point and points that round onto their neighbour are dropped.
-// Returns null when fewer than three points are left.
+// Returns null when fewer than three points are left, or when they lie on one line.
 export function ringToLocal(ring: Position[]): Ring | null {
   const out: number[] = []
   for (const [lon, lat] of ring) {
@@ -83,7 +83,7 @@ export function ringToLocal(ring: Position[]): Ring | null {
     out.push(rx, rz)
   }
   while (out.length >= 4 && out[0] === out[out.length - 2] && out[1] === out[out.length - 1]) out.length -= 2
-  return out.length >= 6 ? out : null
+  return out.length >= 6 && ringArea2(out) !== 0 ? out : null
 }
 
 // A footprint in degrees to scene metres: outer rings clockwise seen from above
@@ -471,7 +471,7 @@ export async function footprints(srs: "EPSG:4326" | "EPSG:31370", raw: string, r
 async function raster(coverage: string, x0: number, y0: number, x1: number, y1: number, raw: string, refresh: boolean) {
   const { fromArrayBuffer } = await import("geotiff")
   const url = `${WCS}?service=WCS&version=2.0.1&request=GetCoverage&coverageId=${coverage}&format=image/tiff&subset=x(${x0},${x1})&subset=y(${y0},${y1})`
-  const file = join(raw, `${coverage}-${x0}-${y0}.tif`)
+  const file = join(raw, `${coverage}-${x0}-${y0}-${x1}-${y1}.tif`)
   const tif = await cached(file, refresh, async () => {
     const { body, contentType } = await fetchBytes(url)
     return extractTiff(body, contentType)
