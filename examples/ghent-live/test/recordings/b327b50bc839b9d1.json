@@ -29,25 +29,25 @@
     {
       "type": "score",
       "name": "stage_readability",
-      "score": 1.92,
+      "score": 1.72,
       "probabilities": [
         {
           "value": 0,
           "label": "poor",
-          "probability": 0.01
+          "probability": 0.02
         },
         {
           "value": 1,
           "label": "acceptable",
-          "probability": 0.06
+          "probability": 0.24
         },
         {
           "value": 2,
           "label": "good",
-          "probability": 0.93
+          "probability": 0.74
         }
       ],
-      "confidence": 0.88
+      "confidence": 0.58
     }
   ]
 }

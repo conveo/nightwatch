@@ -63,6 +63,20 @@
   }
 }
 
+/* A phone held upright: one row that scrolls sideways, above the attribution, which
+   wraps onto two lines there. */
+@media (max-width: 699px) {
+  .ui-presets {
+    bottom: 48px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .ui-presets .ui-button {
+    flex: none;
+  }
+}
+
 /* Left, under the title; controls.ts sets `top` from the title's box. */
 .ui-panel {
   position: fixed;
@@ -176,6 +190,7 @@
   top: 0;
   left: 0;
   visibility: hidden;
+  min-height: 48px;
   padding: 4px 14px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 999px;

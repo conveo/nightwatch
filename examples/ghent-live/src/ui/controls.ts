@@ -171,16 +171,23 @@ export function mountControls(root: HTMLElement, ctx: ControlsContext): void {
   panel.append(lightGroup, layersHeading, layerList)
   root.append(panel, bar)
 
-  // The title's box grows when the status line shows, so the panel follows its bottom.
+  // The panel sits between the title and the preset bar: the title's box grows when
+  // the status line shows, and the bar wraps onto more rows on a narrow screen, so
+  // both edges are measured whenever either changes size. The panel scrolls when it
+  // does not fit, and the bar never covers its last switches.
   const hud = document.querySelector<HTMLElement>("#hud")
   const placePanel = (): void => {
     const top = Math.round((hud?.getBoundingClientRect().bottom ?? 0) + 12)
+    const bottom = Math.round(bar.getBoundingClientRect().top - 12)
     panel.style.top = `${top}px`
-    // Room for the preset bar below.
-    panel.style.maxHeight = `calc(100vh - ${top + 140}px)`
+    panel.style.maxHeight = `${Math.max(0, bottom - top)}px`
   }
   placePanel()
-  if (hud != null && typeof ResizeObserver !== "undefined") new ResizeObserver(placePanel).observe(hud)
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(placePanel)
+    observer.observe(bar)
+    if (hud != null) observer.observe(hud)
+  }
   window.addEventListener("resize", placePanel)
 
   // --- Labels keep clear of the title, the panels and the footer. Their boxes are
