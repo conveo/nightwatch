@@ -614,7 +614,8 @@ const ALPHA = { sector: 0.36, "car-free": 0.46, pedestrian: 0.46 } as const
 const NIGHT_DIM = 0.2
 // A zone's name gives way to a landmark's label (src/ui/labels.ts) or a panel it
 // would come closer to than this, so no two labels overlap.
-const LABEL_GAP_PX = 16
+const LABEL_GAP_PX = 40
+const TAKEN_REFRESH_MS = 500
 // Labels show when the camera looks down at least this steeply (the y of its forward
 // vector), that is, when the zones are seen from above.
 const LABELS_BELOW_Y = -0.75
@@ -762,11 +763,19 @@ export function createCirculationLayer(): Layer {
     }
   }
 
-  // The landmark labels on screen and the panels over the scene, in page pixels.
+  // The landmark labels on screen and the panels over the scene, in page pixels. They
+  // are read twice a second, not every frame (reading boxes forces a layout), as
+  // src/ui/controls.ts does for the landmark labels' own obstacles.
+  let taken: DOMRect[] = []
+  let takenAt = -Infinity
   function takenBoxes(): DOMRect[] {
+    const now = performance.now()
+    if (now - takenAt < TAKEN_REFRESH_MS) return taken
+    takenAt = now
     const landmarks = [...document.querySelectorAll<HTMLElement>(".ui-label")].filter((el) => el.style.visibility === "visible")
     const panels = [...document.querySelectorAll<HTMLElement>("#hud, #ask, .ui-panel, .ui-presets")].filter((el) => !el.hidden)
-    return [...landmarks, ...panels].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
+    taken = [...landmarks, ...panels].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
+    return taken
   }
 
   function markLabels(): void {
