@@ -1,0 +1,18 @@
+{
+  "view": "#cam=-90,170,470&tgt=-10,20,0&mode=fixture&light=night",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser, by night.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "warm_lights_on_towers",
+      "instructions": "Warm lights shine on towers and buildings.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "glowing_path",
+      "instructions": "A glowing path runs through the streets.",
+      "min": 0.8
+    }
+  ]
+}

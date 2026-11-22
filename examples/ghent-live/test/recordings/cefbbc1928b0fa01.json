@@ -1,0 +1,10 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "no_glowing_path",
+      "probability": 1
+    }
+  ]
+}

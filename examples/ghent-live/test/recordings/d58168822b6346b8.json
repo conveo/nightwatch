@@ -1,0 +1,15 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "warm_lights_on_towers",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "glowing_path",
+      "probability": 0.96
+    }
+  ]
+}
