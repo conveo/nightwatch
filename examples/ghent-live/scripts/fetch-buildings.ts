@@ -90,18 +90,18 @@ export function ringToLocal(ring: Position[]): Ring | null {
 // (positive ringArea2), holes the other way. Degenerate rings are dropped.
 export function footprintToLocal(geometry: Geometry): Polygon[] {
   const polygons: Polygon[] = []
-  for (const rings of polygonsOf(geometry)) {
-    const local: Polygon = []
-    rings.forEach((ring, i) => {
-      const r = ringToLocal(ring)
-      if (r == null) {
-        return
-      }
-      const outer = i === 0
-      if (outer !== ringArea2(r) > 0) reverseRing(r)
-      local.push(r)
-    })
-    if (local.length > 0 && rings[0] != null && ringToLocal(rings[0]) != null) polygons.push(local)
+  for (const [outerRing, ...holeRings] of polygonsOf(geometry)) {
+    const outer = outerRing == null ? null : ringToLocal(outerRing)
+    if (outer == null) continue
+    if (ringArea2(outer) < 0) reverseRing(outer)
+    const local: Polygon = [outer]
+    for (const ring of holeRings) {
+      const hole = ringToLocal(ring)
+      if (hole == null) continue
+      if (ringArea2(hole) > 0) reverseRing(hole)
+      local.push(hole)
+    }
+    polygons.push(local)
   }
   return polygons
 }

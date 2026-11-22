@@ -13,7 +13,7 @@ import {
   type Raycaster,
 } from "three"
 import { WATER_LEVEL_M } from "../constants.ts"
-import type { DataMode, Light } from "../view-state.ts"
+import type { DataMode } from "../view-state.ts"
 import type { Layer } from "./types.ts"
 
 // The centre's buildings: GRB footprints (Digitaal Vlaanderen) extruded to their
@@ -358,10 +358,6 @@ export function createBuildingsLayer(): Layer {
       showSelection()
     },
     notice: () => notice,
-    setLight(light: Light) {
-      // By night the facades go dark, so the Lichtplan's lights carry the scene.
-      material.color.setScalar(light === "night" ? 0.45 : 1)
-    },
     pick(ray: Raycaster) {
       return pickBuilding(ray, meshes, buildings)
     },
