@@ -2,13 +2,14 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { test } from "node:test"
 import {
   appEnvironment,
   choosePinTip,
   CORRELATION_ID,
   decodePng,
+  insideDir,
   isPng,
   meshEnvironment,
   noteProblems,
@@ -125,7 +126,7 @@ function goodNote(): { message: InboxMessage; expected: NoteExpectation } {
       capturedAt: "2026-11-22T18:16:56.000Z",
     },
   }
-  return { message, expected: { comment, origin: ORIGIN, view: REVIEW_VIEW, viewport: VIEWPORT, tip } }
+  return { message, expected: { comment, origin: ORIGIN, view: REVIEW_VIEW, viewport: VIEWPORT, tip, reportDir: dirname(FIXTURE) } }
 }
 
 function withBody(message: InboxMessage, change: Record<string, unknown>): InboxMessage {
@@ -136,9 +137,10 @@ test("a delivered note passes only when it carries what a review needs", () => {
   const { message, expected } = goodNote()
   assert.deepEqual(noteProblems(message, expected), [])
 
-  const notPng = join(mkdtempSync(join(tmpdir(), "ghent-live-review-")), "shot.png")
+  const scratch = mkdtempSync(join(tmpdir(), "ghent-live-review-"))
+  const notPng = join(scratch, "shot.png")
   writeFileSync(notPng, "not a PNG")
-  const cases: Array<[InboxMessage, RegExp]> = [
+  const cases: Array<[InboxMessage, RegExp, Partial<NoteExpectation>?]> = [
     [{ ...message, type: "status" }, /a status, not a note/],
     [{ ...message, correlationId: "other" }, /correlation id/],
     [{ ...message, from: "someone-else" }, /comes from someone-else/],
@@ -151,10 +153,13 @@ test("a delivered note passes only when it carries what a review needs", () => {
     [withBody(message, { pin: { n: 1, xPct: 10, yPct: 52.4 } }), /not on the ring/],
     [withBody(message, { meta: { viewport: { w: 800, h: 600, dpr: 1 } } }), /viewport is 800x600/],
     [withBody(message, { screenshot: null }), /no screenshot/],
-    [withBody(message, { screenshot: "/no/such/screenshot.png" }), /does not exist/],
-    [withBody(message, { screenshot: notPng }), /not a PNG/],
+    [withBody(message, { screenshot: join(dirname(FIXTURE), "missing.png") }), /does not exist/],
+    // Only a file the run's overlay saved is read.
+    [withBody(message, { screenshot: notPng }), /not in the overlay's report directory/],
+    [withBody(message, { screenshot: join(dirname(FIXTURE), "../review-e2e.test.ts") }), /not in the overlay's report directory/],
+    [withBody(message, { screenshot: notPng }), /not a PNG/, { reportDir: scratch }],
   ]
-  for (const [bad, problem] of cases) assert.match(noteProblems(bad, expected).join("\n"), problem)
+  for (const [bad, problem, change] of cases) assert.match(noteProblems(bad, { ...expected, ...change }).join("\n"), problem)
   // A screenshot of another size than the viewport the note reports.
   assert.match(noteProblems(message, { ...expected, viewport: { w: 1280, h: 657, dpr: 1 } }).join("\n"), /not the 1280x657 viewport/)
 })
@@ -196,6 +201,13 @@ test("mesh processes get a minimal environment that cannot reach another mesh", 
   })
   const app = appEnvironment(caller, { GHENT_LIVE_PORT: "41001" })
   assert.deepEqual(app, { PATH: "/usr/bin", HOME: "/home/someone", GHENT_LIVE_PORT: "41001" })
+})
+
+test("insideDir accepts files under the directory and nothing else", () => {
+  assert.ok(insideDir("/tmp/glr-abc123/reports/a.png", "/tmp/glr-abc123/reports"))
+  assert.ok(!insideDir("/tmp/glr-abc123/reports", "/tmp/glr-abc123/reports"))
+  assert.ok(!insideDir("/tmp/glr-abc123/reports/../m/daemon.sock", "/tmp/glr-abc123/reports"))
+  assert.ok(!insideDir("/tmp/glr-abc123/reports-other/a.png", "/tmp/glr-abc123/reports"))
 })
 
 test("the mesh home fits a Unix socket path, and the run's ports are never picked", () => {

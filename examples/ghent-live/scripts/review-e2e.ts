@@ -274,7 +274,12 @@ type NoteBody = {
   meta?: { viewport?: { w?: unknown; h?: unknown; dpr?: unknown } } | null
 }
 
-export type NoteExpectation = { comment: string; origin: string; view: ViewState; viewport: Viewport; tip: Point2 }
+export type NoteExpectation = { comment: string; origin: string; view: ViewState; viewport: Viewport; tip: Point2; reportDir: string }
+
+export function insideDir(path: string, dir: string): boolean {
+  const rest = relative(dir, resolve(path))
+  return rest !== "" && !rest.startsWith("..") && !isAbsolute(rest)
+}
 
 // Everything wrong with a delivered note; empty when it carries what a review needs.
 export function noteProblems(message: InboxMessage, expected: NoteExpectation): string[] {
@@ -315,6 +320,8 @@ export function noteProblems(message: InboxMessage, expected: NoteExpectation): 
 
   if (typeof body.screenshot !== "string" || !isAbsolute(body.screenshot)) {
     problems.push("the note has no screenshot (the tab capture failed)")
+  } else if (!insideDir(body.screenshot, expected.reportDir)) {
+    problems.push("the note's screenshot is not in the overlay's report directory")
   } else if (!existsSync(body.screenshot)) {
     problems.push("the note's screenshot file does not exist")
   } else {
@@ -412,6 +419,9 @@ async function waitUntil<T>(what: string, timeoutMs: number, probe: () => Promis
 
 // Everything started is stopped in reverse order, by its PID, on success and failure.
 const cleanups: Array<() => Promise<void> | void> = []
+const startedProcesses: Started[] = []
+// Set once a signal or the time limit starts the cleanup: nothing new starts after it.
+let stopping = false
 async function cleanUp(): Promise<void> {
   while (cleanups.length > 0) {
     try {
@@ -450,12 +460,14 @@ async function stop(started: Started): Promise<void> {
 }
 
 async function start(name: string, command: string, args: string[], options: { cwd: string; env: Record<string, string>; log: string }): Promise<Started> {
+  if (stopping) throw new Error(`not starting ${name}: the run is stopping`)
   const out = openSync(options.log, "a")
   const child = spawn(command, args, { cwd: options.cwd, env: options.env, detached: true, stdio: ["ignore", out, out] })
   closeSync(out)
   await once(child, "spawn")
   const started: Started = { name, child, log: options.log, stopped: false }
   cleanups.push(() => stop(started))
+  startedProcesses.push(started)
   say(`started ${name} (pid ${child.pid})`)
   return started
 }
@@ -466,6 +478,11 @@ function tail(file: string, lines = 15): string {
   } catch {
     return "(no log)"
   }
+}
+
+// The last lines each started process wrote, for a failed run.
+function printLogs(): void {
+  for (const started of startedProcesses) console.error(`--- ${started.name} log (last lines) ---\n${tail(started.log)}`)
 }
 
 // The status code the dev server answers with for a given Host header.
@@ -591,7 +608,7 @@ function meshCli(mesh: Mesh, ...args: string[]) {
 type PassResult = { problems: string[]; screenshot: string | null }
 
 // One review, on one origin: open the view, pin the ring, send a note, read the inbox.
-async function reviewOnce(args: { cdpUrl: string; origin: string; label: string; comment: string; mesh: Mesh; out: string; work: string }): Promise<PassResult> {
+async function reviewOnce(args: { cdpUrl: string; origin: string; label: string; comment: string; mesh: Mesh; out: string; work: string; reportDir: string }): Promise<PassResult> {
   const cdp = await Cdp.connect(args.cdpUrl)
   const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" })
   const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true })
@@ -611,75 +628,76 @@ async function reviewOnce(args: { cdpUrl: string; origin: string; label: string;
   }
 }
 
-async function drive(tab: Tab, args: { origin: string; label: string; comment: string; mesh: Mesh; out: string }): Promise<PassResult> {
-  const { origin, comment, mesh } = args
+async function drive(tab: Tab, args: { origin: string; label: string; comment: string; mesh: Mesh; out: string; reportDir: string }): Promise<PassResult> {
+  const { origin, comment, mesh, reportDir } = args
   const { cdp, sessionId } = tab
-  {
-    await cdp.send("Page.enable", {}, sessionId)
-    await cdp.send("Page.navigate", { url: `${origin}/${REVIEW_HASH}` }, sessionId)
-    await waitUntil("the app to report ready with the overlay on the page", 90_000, () =>
-      evaluate<boolean>(tab, `window.__ghentLive?.ready === true && ${SHADOW}?.querySelector('.bubble') != null`),
-    )
-    const opened = await evaluate<ViewState>(tab, "window.__ghentLive.view")
-    if (!sameView(opened, REVIEW_VIEW)) return { problems: [`the app opened ${serializeViewState(opened)}, not ${REVIEW_HASH}`], screenshot: null }
+  await cdp.send("Page.enable", {}, sessionId)
+  await cdp.send("Page.navigate", { url: `${origin}/${REVIEW_HASH}` }, sessionId)
+  await waitUntil("the app to report ready with the overlay on the page", 90_000, () =>
+    evaluate<boolean>(tab, `window.__ghentLive?.ready === true && ${SHADOW}?.querySelector('.bubble') != null`),
+  )
+  const opened = await evaluate<ViewState>(tab, "window.__ghentLive.view")
+  if (!sameView(opened, REVIEW_VIEW)) return { problems: [`the app opened ${serializeViewState(opened)}, not ${REVIEW_HASH}`], screenshot: null }
 
-    await clickOverlay(tab, ".bubble", "the Reviewer button")
-    await waitForText(tab, /Add comment/, "the Reviewer panel")
-    say(`${args.label}: Reviewer panel open`)
-    await clickOverlay(tab, ".panel-foot .btn.primary", "the Add comment button")
-    await waitForText(tab, /Click the page to drop a pin|Screen capture is off[^\n]*/, "comment mode")
-    // Out of the way of the note's composer, as a reviewer would.
-    await clickOverlay(tab, '.panel-head .icon-btn[aria-label="Close reviewer"]', "the panel's close button")
-    // Comment mode starts sharing the tab, and Chrome's "sharing this tab" bar takes
-    // its height from the page: wait until the viewport stops changing.
-    let viewport = await evaluate<Viewport>(tab, VIEWPORT)
-    for (let still = 0; still < 5; ) {
-      await sleep(300)
-      const now = await evaluate<Viewport>(tab, VIEWPORT)
-      still = now.w === viewport.w && now.h === viewport.h ? still + 1 : 0
-      viewport = now
-    }
-    const off = /Screen capture is off[^\n]*/.exec(await evaluate<string>(tab, OVERLAY_TEXT))
-    if (off != null) return { problems: [off[0]], screenshot: null }
-    say(`${args.label}: comment mode on, viewport ${viewport.w}x${viewport.h}`)
-
-    // The ring as the page draws it now, before the pin.
-    const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" }, sessionId)
-    const before = decodePng(Buffer.from(data, "base64"))
-    const { tip, red } = choosePinTip(before, REVIEW_VIEW, viewport)
-    if (tip == null) return { problems: ["the red ring is not visible in the review view"], screenshot: null }
-
-    await click(tab, tip)
-    const pinLabel = await waitForText(tab, /Pin #\d+/, "the pin")
-    say(`${args.label}: ${pinLabel} dropped on the red ring at ${Math.round(tip.x)},${Math.round(tip.y)}`)
-    await clickOverlay(tab, ".composer textarea", "the note's text box")
-    await cdp.send("Input.insertText", { text: comment }, sessionId)
-    const typed = await evaluate<string>(tab, `${SHADOW}?.querySelector('.composer textarea')?.value ?? ''`)
-    if (typed !== comment) return { problems: [`the note's text box holds ${JSON.stringify(typed)}`], screenshot: null }
-    const open = await evaluate<ViewState>(tab, "window.__ghentLive.view")
-
-    await clickOverlay(tab, ".composer .btn.primary", "the Send button")
-    const status = await waitForText(tab, /(Sent to|Not delivered|Cannot reach)[^\n]*/, "the overlay to send the note", 30_000)
-    say(`${args.label}: overlay says "${status}"`)
-    const sent = /^Sent to (\S+) with a screenshot \(message (\S+)\)/.exec(status)
-    if (sent == null || sent[1] !== REVIEWER_ID) return { problems: [`the overlay did not send the note with a screenshot: ${status}`], screenshot: null }
-
-    const message = await waitUntil("the note in the reviewer's inbox", 20_000, async () => {
-      const read = meshCli(mesh, "inbox", "--id", REVIEWER_ID)
-      if (read.status !== 0) throw new Error(read.stderr)
-      return read.stdout.split("\n").map(parseInboxLine).find((m) => m?.correlationId === CORRELATION_ID) ?? null
-    })
-    say(`${args.label}: the reviewer's inbox holds note ${message.id} from ${message.from}`)
-    const problems = noteProblems(message, { comment, origin, view: open, viewport, tip })
-    if (message.id !== sent[2]) problems.push(`the inbox's note is ${message.id}, the overlay sent ${sent[2]}`)
-    const shot = (message.body as NoteBody).screenshot
-    if (typeof shot !== "string" || !existsSync(shot)) return { problems, screenshot: null }
-
-    mkdirSync(dirname(args.out), { recursive: true })
-    copyFileSync(shot, args.out)
-    problems.push(...screenshotProblems({ before, after: decodePng(readFileSync(shot)), viewport, tip, red }))
-    return { problems, screenshot: args.out }
+  await clickOverlay(tab, ".bubble", "the Reviewer button")
+  await waitForText(tab, /Add comment/, "the Reviewer panel")
+  say(`${args.label}: Reviewer panel open`)
+  await clickOverlay(tab, ".panel-foot .btn.primary", "the Add comment button")
+  await waitForText(tab, /Click the page to drop a pin|Screen capture is off[^\n]*/, "comment mode")
+  // Out of the way of the note's composer, as a reviewer would.
+  await clickOverlay(tab, '.panel-head .icon-btn[aria-label="Close reviewer"]', "the panel's close button")
+  // Comment mode starts sharing the tab, and Chrome's "sharing this tab" bar takes
+  // its height from the page: wait until the viewport stops changing.
+  let viewport = await evaluate<Viewport>(tab, VIEWPORT)
+  for (let still = 0; still < 5; ) {
+    await sleep(300)
+    const now = await evaluate<Viewport>(tab, VIEWPORT)
+    still = now.w === viewport.w && now.h === viewport.h ? still + 1 : 0
+    viewport = now
   }
+  const off = /Screen capture is off[^\n]*/.exec(await evaluate<string>(tab, OVERLAY_TEXT))
+  if (off != null) return { problems: [off[0]], screenshot: null }
+  say(`${args.label}: comment mode on, viewport ${viewport.w}x${viewport.h}`)
+
+  // The ring as the page draws it now, before the pin.
+  const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" }, sessionId)
+  const before = decodePng(Buffer.from(data, "base64"))
+  const { tip, red } = choosePinTip(before, REVIEW_VIEW, viewport)
+  if (tip == null) return { problems: ["the red ring is not visible in the review view"], screenshot: null }
+
+  await click(tab, tip)
+  const pinLabel = await waitForText(tab, /Pin #\d+/, "the pin")
+  say(`${args.label}: ${pinLabel} dropped on the red ring at ${Math.round(tip.x)},${Math.round(tip.y)}`)
+  await clickOverlay(tab, ".composer textarea", "the note's text box")
+  await cdp.send("Input.insertText", { text: comment }, sessionId)
+  const typed = await evaluate<string>(tab, `${SHADOW}?.querySelector('.composer textarea')?.value ?? ''`)
+  if (typed !== comment) return { problems: [`the note's text box holds ${JSON.stringify(typed)}`], screenshot: null }
+  const open = await evaluate<ViewState>(tab, "window.__ghentLive.view")
+
+  await clickOverlay(tab, ".composer .btn.primary", "the Send button")
+  const status = await waitForText(tab, /(Sent to|Not delivered|Cannot reach)[^\n]*/, "the overlay to send the note", 30_000)
+  say(`${args.label}: overlay says "${status}"`)
+  const sent = /^Sent to (\S+) with a screenshot \(message (\S+)\)/.exec(status)
+  if (sent == null || sent[1] !== REVIEWER_ID) return { problems: [`the overlay did not send the note with a screenshot: ${status}`], screenshot: null }
+
+  const message = await waitUntil("the note in the reviewer's inbox", 20_000, async () => {
+    const read = meshCli(mesh, "inbox", "--id", REVIEWER_ID)
+    if (read.status !== 0) throw new Error(read.stderr)
+    return read.stdout.split("\n").map(parseInboxLine).find((m) => m?.correlationId === CORRELATION_ID) ?? null
+  })
+  say(`${args.label}: the reviewer's inbox holds note ${message.id} from ${message.from}`)
+  const problems = noteProblems(message, { comment, origin, view: open, viewport, tip, reportDir })
+  if (message.id !== sent[2]) problems.push(`the inbox's note is ${message.id}, the overlay sent ${sent[2]}`)
+  // Only a PNG this run's overlay saved is read further.
+  const shot = (message.body as NoteBody).screenshot
+  if (typeof shot !== "string" || !insideDir(shot, reportDir) || !existsSync(shot)) return { problems, screenshot: null }
+  const png = readFileSync(shot)
+  if (!isPng(png)) return { problems, screenshot: null }
+
+  mkdirSync(dirname(args.out), { recursive: true })
+  copyFileSync(shot, args.out)
+  problems.push(...screenshotProblems({ before, after: decodePng(png), viewport, tip, red }))
+  return { problems, screenshot: args.out }
 }
 
 async function launchChrome(args: { work: string; extraFlags: string[]; proxyOrigin: string }): Promise<string> {
@@ -762,6 +780,7 @@ async function main(): Promise<number> {
   mkdirSync(meshHome)
   if (!socketPathFits(meshHome)) throw new SetupError(`the mesh socket path under ${meshHome} is longer than 107 bytes`)
 
+  const reportDir = join(work, "reports")
   const [redisPort, overlayPort, devPort] = [await freePort(), await freePort(), await freePort()]
   const appOrigin = `http://127.0.0.1:${devPort}`
   const proxyOrigin = `http://${PROXY_HOST}:${devPort}`
@@ -772,6 +791,7 @@ async function main(): Promise<number> {
     spawnSync("docker", ["rm", "-f", redisName], { stdio: "ignore" })
     say(`removed the Redis container ${redisName}`)
   })
+  if (stopping) throw new Error("the run is stopping")
   const run = spawnSync("docker", ["run", "-d", "--name", redisName, "-p", `127.0.0.1:${redisPort}:6379`, values["redis-image"]], { encoding: "utf8" })
   if (run.status !== 0) throw new SetupError(`docker run failed: ${run.stderr.trim()}`)
   await waitUntil("Redis", 15_000, async () =>
@@ -794,7 +814,7 @@ async function main(): Promise<number> {
 
   const built = spawnSync(process.execPath, ["scripts/build-client.ts"], { cwd: OVERLAY_DIR, env: mesh.env, encoding: "utf8" })
   if (built.status !== 0) throw new SetupError(`building the overlay failed: ${built.stderr.trim()}`)
-  const overlay = await start("overlay server", process.execPath, [
+  await start("overlay server", process.execPath, [
     "src/server/main.ts",
     "--port", String(overlayPort),
     "--origin", appOrigin,
@@ -802,12 +822,12 @@ async function main(): Promise<number> {
     "--target", REVIEWER_ID,
     "--reporter-id", REPORTER_ID,
     "--plan", join(APP_DIR, "plan/review-plan.json"),
-    "--report-dir", join(work, "reports"),
+    "--report-dir", reportDir,
     "--mesh-cli", JSON.stringify([process.execPath, TSX_CLI, MESH_CLI]),
   ], { cwd: OVERLAY_DIR, env: mesh.env, log: join(work, "overlay.log") })
   await waitUntil("the overlay server", 30_000, async () => (await fetch(`http://127.0.0.1:${overlayPort}/api/review`)).ok)
 
-  const dev = await start("dev server", process.execPath, [VITE_BIN], {
+  await start("dev server", process.execPath, [VITE_BIN], {
     cwd: APP_DIR,
     env: appEnvironment(env, {
       GHENT_LIVE_PORT: String(devPort),
@@ -836,7 +856,7 @@ async function main(): Promise<number> {
   let firstShot: string | null = null
   for (const pass of passes) {
     const comment = `The red ring marks the Belfry (review e2e ${runId}, ${pass.label}).`
-    const result = await reviewOnce({ cdpUrl, origin: pass.origin, label: pass.label, comment, mesh, out: pass.out, work })
+    const result = await reviewOnce({ cdpUrl, origin: pass.origin, label: pass.label, comment, mesh, out: pass.out, work, reportDir })
     for (const problem of result.problems) failures.push(`${pass.label}: ${problem}`)
     if (result.problems.length === 0) say(`${pass.label}: the note carries the comment, the view's URL hash, and a screenshot with the ring and the pin`)
     if (result.screenshot != null) say(`${pass.label}: note screenshot: ${relative(process.cwd(), result.screenshot)}`)
@@ -859,7 +879,7 @@ async function main(): Promise<number> {
 
   if (failures.length > 0) {
     for (const failure of failures) say(`FAIL  ${failure}`)
-    for (const started of [overlay, dev]) console.error(`--- ${started.name} log (last lines) ---\n${tail(started.log)}`)
+    printLogs()
     return 1
   }
   say("PASS: both notes reached the reviewer's inbox with the comment, the view and a screenshot, and check:visual passed")
@@ -867,7 +887,10 @@ async function main(): Promise<number> {
 }
 
 if (process.argv[1] != null && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const stopAndExit = (code: number) => void cleanUp().finally(() => process.exit(code))
+  const stopAndExit = (code: number) => {
+    stopping = true
+    void cleanUp().finally(() => process.exit(code))
+  }
   process.once("SIGINT", () => stopAndExit(130))
   process.once("SIGTERM", () => stopAndExit(143))
   // A stuck step fails the run instead of leaving everything running.
@@ -878,6 +901,7 @@ if (process.argv[1] != null && resolve(process.argv[1]) === fileURLToPath(import
   main()
     .catch((error: unknown) => {
       console.error(`[review-e2e] ${error instanceof SetupError ? "could not run" : "FAIL"}: ${(error as Error).message}`)
+      printLogs()
       return error instanceof SetupError ? 2 : 1
     })
     .then(async (code) => {
