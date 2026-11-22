@@ -1,0 +1,55 @@
+{
+  "view": "#cam=-100,850,60&tgt=-100,0,-140&mode=fixture",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser, shown on a projector during a talk. The app draws its controls over the scene: camera preset buttons, a day/night switch, layer switches and name labels on landmarks.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "preset_buttons",
+      "instructions": "A row of buttons along the bottom of the screen names camera views, among them 'From above' and 'Street level'.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "light_and_layers",
+      "instructions": "A panel on the left, under the title, holds a Day/Night switch and a list of layer switches (for example 'Buildings').",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "landmark_labels",
+      "instructions": "Labels naming Ghent landmarks (for example 'Belfort', 'Sint-Baafs' or 'Gravensteen') are placed over the 3D scene.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "title_clear",
+      "instructions": "The title 'Ghent, live' in the top-left corner is fully visible, not covered by any button, panel or label.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "labels_apart",
+      "instructions": "No two labels overlap each other.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "labels_clear_of_title",
+      "instructions": "No label overlaps the title \"Ghent, live\".",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "labels_clear_of_controls",
+      "instructions": "No label overlaps the panel on the left or the row of buttons at the bottom.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "instructions": "The on-screen text is readable from the back of a room. How readable is the on-screen text when the screen is projected for an audience of 100 people?",
+      "levels": [{ "label": "poor" }, { "label": "acceptable" }, { "label": "good" }],
+      "minLevel": "acceptable"
+    }
+  ]
+}

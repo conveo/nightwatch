@@ -1,0 +1,63 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "preset_buttons",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "light_and_layers",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "landmark_labels",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "title_clear",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "labels_apart",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "labels_clear_of_title",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "labels_clear_of_controls",
+      "probability": 1
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "score": 1.7,
+      "probabilities": [
+        {
+          "value": 0,
+          "label": "poor",
+          "probability": 0.05
+        },
+        {
+          "value": 1,
+          "label": "acceptable",
+          "probability": 0.2
+        },
+        {
+          "value": 2,
+          "label": "good",
+          "probability": 0.75
+        }
+      ],
+      "confidence": 0.55
+    }
+  ]
+}

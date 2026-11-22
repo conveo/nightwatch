@@ -14,6 +14,7 @@ import { mountAskPanel } from "./ask/panel.ts"
 import { followCamera, statusLine } from "./hud.ts"
 import { createLayers } from "./layers/index.ts"
 import { mountControls } from "./ui/controls.ts"
+import { MAX_POLAR_ANGLE, MIN_CAMERA_Y_M } from "./ui/presets.ts"
 import { parseViewState, serializeViewState, type Light, type Vec3, type ViewState } from "./view-state.ts"
 import "./style.css"
 
@@ -50,7 +51,12 @@ const LIGHTING: Record<Light, { background: number; sky: number; ground: number;
 const camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 20000)
 const controls = new MapControls(camera, canvas)
 controls.enableDamping = true
-controls.maxPolarAngle = Math.PI / 2.05
+// The view may tilt a little above the horizon, as a person on the street looks up at
+// a tower, but a drag never takes the camera under the street.
+controls.maxPolarAngle = MAX_POLAR_ANGLE
+controls.addEventListener("change", () => {
+  if (camera.position.y < MIN_CAMERA_Y_M) camera.position.y = MIN_CAMERA_Y_M
+})
 
 const layers = createLayers()
 for (const layer of layers) scene.add(layer.group)
