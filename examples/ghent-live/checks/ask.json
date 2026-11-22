@@ -1,0 +1,31 @@
+{
+  "view": "#ask=park:gravensteen",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser, shown on a projector. The URL asks the 'Ask Ghent' panel where to park to reach the Gravensteen, a castle in the centre.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "panel_answer",
+      "instructions": "A panel on the right shows a question and an answer with a percentage.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "answer_names_garage",
+      "instructions": "The panel's answer names a parking garage to park at.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "title_clear",
+      "instructions": "The title 'Ghent, live' in the top-left corner is fully visible, not covered by the panel.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "panel_readability",
+      "instructions": "How readable is the text in the panel on the right when projected for an audience of 100 people?",
+      "levels": [{ "label": "poor" }, { "label": "acceptable" }, { "label": "good" }],
+      "minLevel": "acceptable"
+    }
+  ]
+}
