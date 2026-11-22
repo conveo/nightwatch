@@ -36,40 +36,44 @@
   }
 }
 
-/* Bottom left, above the attribution line; the right side is the "Ask Ghent" panel's
-   and the reviewer overlay's. */
 .ui-presets,
 .ui-panel {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+/* A dock at the bottom left. Its lower edge holds the base's attribution line, which
+   is drawn on top of it and so stays readable over a bright scene. The right side is
+   the "Ask Ghent" panel's and the reviewer overlay's. */
 .ui-presets {
   position: fixed;
-  left: 16px;
-  bottom: 36px;
+  left: 4px;
+  bottom: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  max-width: calc(100vw - 32px);
-  padding: 8px;
-  border-radius: 12px;
+  max-width: calc(100vw - 8px);
+  padding: 8px 8px 34px;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
   /* Opaque: the scene's lines must not show through the controls. */
   background: #0b1020;
 }
 
 @media (min-width: 1000px) {
   .ui-presets {
+    /* At least as wide as the attribution line it holds. */
+    min-width: 720px;
     max-width: calc(100vw - 480px);
   }
 }
 
-/* A phone held upright: one row that scrolls sideways, above the attribution, which
+/* A phone held upright: one row that scrolls sideways, over the attribution, which
    wraps onto two lines there. */
 @media (max-width: 699px) {
   .ui-presets {
-    bottom: 48px;
     flex-wrap: nowrap;
     overflow-x: auto;
+    padding-bottom: 50px;
   }
 
   .ui-presets .ui-button {

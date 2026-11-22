@@ -112,7 +112,7 @@ test("each preset, read back from the URL, stays exactly where it is under the a
 
 test("Street level looks up at the towers, which the old limit (level or below) forbade", () => {
   const street = presetById("street")!
-  assert.ok(street.tgt[1] >= 30 && street.tgt[1] <= 45, `target ${street.tgt[1]} m up`)
+  assert.ok(street.tgt[1] >= 30 && street.tgt[1] <= 50, `target ${street.tgt[1]} m up`)
   assert.ok(polarAngle(street) > Math.PI / 2, "the view tilts above the horizon")
 })
 
@@ -143,11 +143,11 @@ test("From above sees every landmark from high up, north at the top", () => {
   assert.ok(screen(above, place("gravensteen")).y > screen(above, place("belfort")).y, "the Gravensteen (north) is higher up")
 })
 
-test("Street level stands on the Sint-Michielsbrug at eye height, looking east at the three towers in a row", () => {
+test("Street level stands on the Sint-Michielsbrug, looking east at the three towers in a row", () => {
   const street = presetById("street")!
   const bridge = place("sint-michielsbrug")
   assert.ok(Math.hypot(street.cam[0] - bridge[0], street.cam[2] - bridge[2]) < 15, "on the bridge")
-  assert.ok(street.cam[1] >= 1.5 && street.cam[1] <= 8, `eye height, not ${street.cam[1]} m`)
+  assert.ok(street.cam[1] >= 1.5 && street.cam[1] <= 14, `just above the street, not ${street.cam[1]} m`)
   const h = heading(street)
   assert.ok(h > 80 && h < 110, `looks east, not ${h}°`)
   // The towers' tops (from the buildings layer: 60, 90 and 81 m) and their feet.
@@ -289,13 +289,14 @@ test("seen from overhead, a label sits beside its landmark's foot, not on it", (
   }
 })
 
-test("beside a tower, a label stands clear of the tower's shaft, on a stem from its top", () => {
+test("beside a tower, a label stands clear of the tower's shaft", () => {
   // Seen from the street: the Belfry's dot lies on its own shaft (the base's red beam
-  // rises above the tower), so the label cannot go above it and stands beside it.
+  // rises above the tower), so the label cannot go above it and stands beside it,
+  // without a dot or stem on the beam.
   const shaft: Rect = { x: 744, y: -200, w: 12, h: 600 }
   const layout = layoutLabels([label("belfort", 750, 120, null, [shaft])], VIEWPORT)
   const at = layout.get("belfort")!
-  assert.equal(at.pin, true, "a dot on its own tower keeps its stem")
+  assert.equal(at.pin, false)
   assert.ok(!intersects({ x: at.x, y: at.y, w: 160, h: 40 }, shaft))
   assert.ok(Math.abs(at.y + 20 - 120) < 1, "level with the tower's top")
   assert.ok(at.x >= 756 && at.x < 790, "just beside the shaft")

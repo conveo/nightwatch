@@ -73,10 +73,11 @@ export function headingTo(from: Vec3, to: Vec3): number {
 }
 
 const bridge = placeAt("sint-michielsbrug")
-// The eye: on the bridge's deck, 6 m above the street, at its north-east corner,
-// where Sint-Baafs shows past the Korenmarkt's south corner. The view turns a little
-// right of the Belfry and tilts up, so the three towers fill the frame.
-const streetEye: Vec3 = [bridge[0] + 8.9, 6, bridge[2] - 10.3]
+// The eye: above the bridge's north-east corner, 14 m over the street. The scene's
+// ground is flat, so the bridge has no rise; from this height Sint-Baafs clears the
+// roofs on the Korenmarkt's south side. The view turns a little right of the Belfry
+// and tilts up, so the three towers fill the frame.
+const streetEye: Vec3 = [bridge[0] + 8.9, 14, bridge[2] - 10.3]
 const STREET_TURN_DEG = 2
 const STREET_TILT_UP_DEG = 6
 
@@ -89,8 +90,7 @@ export const PRESETS: readonly Preset[] = [
   // The landmarks lie north-west of the Belfry, so the view centres on them, slightly
   // tilted so the buildings still read as 3D.
   { id: "above", name: "From above", ...poseLookingAt([-100, 0, -140], 0, 200, 850) },
-  // On the Sint-Michielsbrug at eye height, looking east along the Korenmarkt and up
-  // at the towers of Sint-Niklaas, the Belfry and Sint-Baafs, which stand in a row.
+  // On the Sint-Michielsbrug, looking east along the Korenmarkt and up at the towers of Sint-Niklaas, the Belfry and Sint-Baafs, which stand in a row.
   { id: "street", name: "Street level", ...poseFromEye(streetEye, headingTo(streetEye, placeAt("belfort")) + STREET_TURN_DEG, -STREET_TILT_UP_DEG, 300) },
 ]
 

@@ -1,5 +1,5 @@
 {
-  "view": "#cam=-300,6,-29&tgt=-4.2,37.4,10.1&mode=fixture",
+  "view": "#cam=-300,14,-29&tgt=-4.2,45.4,10.1&mode=fixture",
   "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser, shown on a projector during a talk. The camera stands at eye height on a bridge over the river Leie (the Sint-Michielsbrug) and looks east toward the city's towers.",
   "checks": [
     {

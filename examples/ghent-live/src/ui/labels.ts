@@ -45,22 +45,24 @@ export const LABEL_ORDER: readonly string[] = [
 ]
 
 // The body of a landmark, in metres, that no label covers: a label names the
-// landmark, it should not hide it. Every landmark has a foot on the ground (a disc);
-// a tower also has a shaft up to its top. The Belfry's foot is wider and it has a
-// second, thin shaft for the base's marker there, a red ring (radius 34 m) and beam
-// (160 m).
+// landmark, it should not hide it. Every landmark has a foot on the ground (a disc
+// about as wide as the landmark: the cathedral and the Belfry with its cloth hall are
+// long buildings); a tower also has a shaft up to its top. The Belfry has a second,
+// thin shaft for the base's marker there, a red ring (radius 34 m) and beam (160 m).
 export type Cylinder = { radius: number; height: number }
 export type Body = { foot: number; shafts?: readonly Cylinder[] }
 export const BODIES: Readonly<Record<string, Body>> = {
   belfort: {
-    foot: 40,
+    foot: 55,
     shafts: [
       { radius: 8, height: 91 },
       { radius: 2, height: 160 },
     ],
   },
-  "sint-baafs": { foot: 30, shafts: [{ radius: 8, height: 81 }] },
-  "sint-niklaas": { foot: 30, shafts: [{ radius: 8, height: 60 }] },
+  "sint-baafs": { foot: 60, shafts: [{ radius: 8, height: 81 }] },
+  "sint-niklaas": { foot: 45, shafts: [{ radius: 8, height: 60 }] },
+  gravensteen: { foot: 45 },
+  stadhuis: { foot: 40 },
 }
 export const DEFAULT_BODY: Body = { foot: 30 }
 
@@ -125,9 +127,9 @@ function candidates(a: Point, w: number, h: number, gap: number, own: readonly R
 }
 
 // Places each label next to what it names, on a stem from its dot. Where the dot falls
-// on a landmark's foot (seen from overhead, a tower's top lies on its own foot) or on
-// another landmark's shaft, the label stands beside that body instead, with no dot or
-// stem. A dot on its own tower's shaft (the Belfry's top, on the beam above it) stays.
+// on a landmark's body (seen from overhead, a tower's top lies on its own foot; the
+// Belfry's top lies on the base's beam) the label stands beside that body instead,
+// with no dot or stem.
 //
 // A label never leaves the viewport and never covers another label, a dot, an
 // obstacle (the title, the panels) or any landmark's body. One that fits nowhere is
@@ -140,9 +142,7 @@ export function layoutLabels(
 ): Map<string, Placement | null> {
   const body = (l: LabelInput): Rect[] => (l.foot == null ? [...l.shafts] : [l.foot, ...l.shafts])
   const bodies = labels.flatMap(body)
-  const pinned = (l: LabelInput): boolean =>
-    l.anchor != null &&
-    !labels.some((o) => (o.foot != null && contains(o.foot, l.anchor!)) || (o !== l && o.shafts.some((r) => contains(r, l.anchor!))))
+  const pinned = (l: LabelInput): boolean => l.anchor != null && !bodies.some((b) => contains(b, l.anchor!))
   // Every dot stays uncovered, so each label still points at its own landmark.
   const dots: Rect[] = labels.flatMap((l) =>
     l.anchor == null || !pinned(l) ? [] : [{ x: l.anchor.x - DOT_PX / 2, y: l.anchor.y - DOT_PX / 2, w: DOT_PX, h: DOT_PX }],
