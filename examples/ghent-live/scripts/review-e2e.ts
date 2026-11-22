@@ -34,7 +34,7 @@
 //   CHROME, CHROME_FLAGS  a Chrome binary, and extra flags for it ("--no-sandbox"
 //                         where Chrome's sandbox cannot start)
 
-import { spawn, spawnSync, type ChildProcess } from "node:child_process"
+import { spawn, type ChildProcess } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { once } from "node:events"
 import { closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -420,15 +420,60 @@ async function waitUntil<T>(what: string, timeoutMs: number, probe: () => Promis
 // Everything started is stopped in reverse order, by its PID, on success and failure.
 const cleanups: Array<() => Promise<void> | void> = []
 const startedProcesses: Started[] = []
-// Set once a signal or the time limit starts the cleanup: nothing new starts after it.
+// Short-lived commands still running; the cleanup kills them first.
+const running = new Set<() => void>()
+// Set once the cleanup starts: nothing new starts after it.
 let stopping = false
-async function cleanUp(): Promise<void> {
-  while (cleanups.length > 0) {
-    try {
-      await cleanups.pop()!()
-    } catch (error) {
-      console.error(`[review-e2e] cleanup: ${(error as Error).message}`)
+let cleaning: Promise<void> | null = null
+
+// One cleanup for every way out (the end of the run, a signal, the time limit): a
+// second call, say a second Ctrl-C, waits for the same one instead of racing it.
+function cleanUp(): Promise<void> {
+  stopping = true
+  cleaning ??= (async () => {
+    for (const kill of running) kill()
+    while (cleanups.length > 0) {
+      try {
+        await cleanups.pop()!()
+      } catch (error) {
+        console.error(`[review-e2e] cleanup: ${(error as Error).message}`)
+      }
     }
+  })()
+  return cleaning
+}
+
+type RunResult = { status: number | null; stdout: string; stderr: string }
+
+// A short-lived command with a deadline. It runs asynchronously, so the time limit and
+// Ctrl-C still work while it runs, and it leads its own process group, so stopping it
+// also stops what it started (tsx runs the mesh CLI in a child of its own).
+async function run(command: string, args: string[], options: { cwd?: string; env?: Record<string, string>; timeoutMs: number }): Promise<RunResult> {
+  const child = spawn(command, args, { cwd: options.cwd, env: options.env, detached: true, stdio: ["ignore", "pipe", "pipe"] })
+  let stdout = ""
+  let stderr = ""
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk))
+  child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk))
+  const kill = () => {
+    try {
+      if (child.pid != null) process.kill(-child.pid, "SIGKILL")
+    } catch {
+      // Already gone.
+    }
+  }
+  running.add(kill)
+  const timer = setTimeout(() => {
+    stderr += `\n(stopped after ${options.timeoutMs / 1000} s)`
+    kill()
+  }, options.timeoutMs)
+  try {
+    const [status] = (await once(child, "close")) as [number | null]
+    return { status, stdout, stderr }
+  } catch (error) {
+    return { status: null, stdout, stderr: `${stderr}${(error as Error).message}` }
+  } finally {
+    clearTimeout(timer)
+    running.delete(kill)
   }
 }
 
@@ -464,10 +509,11 @@ async function start(name: string, command: string, args: string[], options: { c
   const out = openSync(options.log, "a")
   const child = spawn(command, args, { cwd: options.cwd, env: options.env, detached: true, stdio: ["ignore", out, out] })
   closeSync(out)
-  await once(child, "spawn")
+  // Registered before the first await, so a cleanup that starts meanwhile stops it too.
   const started: Started = { name, child, log: options.log, stopped: false }
   cleanups.push(() => stop(started))
   startedProcesses.push(started)
+  await once(child, "spawn")
   say(`started ${name} (pid ${child.pid})`)
   return started
 }
@@ -561,6 +607,19 @@ class Cdp {
 
 type Tab = { cdp: Cdp; sessionId: string }
 
+// Page scripts are fixed strings. A value a script needs (a CSS selector) goes in as
+// an argument of Runtime.callFunctionOn, never spliced into the code.
+async function callInPage<T>(tab: Tab, functionDeclaration: string, ...args: Array<string | number>): Promise<T> {
+  const global = await tab.cdp.send<{ result: { objectId?: string } }>("Runtime.evaluate", { expression: "globalThis" }, tab.sessionId)
+  const answer = await tab.cdp.send<{ result: { value?: unknown }; exceptionDetails?: { text: string } }>(
+    "Runtime.callFunctionOn",
+    { objectId: global.result.objectId, functionDeclaration, arguments: args.map((value) => ({ value })), returnByValue: true, awaitPromise: true },
+    tab.sessionId,
+  )
+  if (answer.exceptionDetails != null) throw new Error(`page script failed: ${answer.exceptionDetails.text}`)
+  return answer.result.value as T
+}
+
 async function evaluate<T>(tab: Tab, expression: string): Promise<T> {
   const answer = await tab.cdp.send<{ result: { value?: unknown }; exceptionDetails?: { text: string } }>(
     "Runtime.evaluate",
@@ -584,11 +643,19 @@ const OVERLAY_TEXT = `(${SHADOW}?.querySelector('.root')?.innerText ?? '')`
 const VIEWPORT = "({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio })"
 // The centre of an element in the overlay, or null while it is hidden or something
 // else (another part of the overlay) lies on top of that spot.
-const centreOf = (selector: string) =>
-  `(() => { const root = ${SHADOW}; const el = root?.querySelector(${JSON.stringify(selector)}); if (el == null) return null; const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const top = root.elementFromPoint(x, y); return r.width > 0 && r.height > 0 && top != null && el.contains(top) ? { x, y } : null })()`
+const CENTRE_OF = `function (selector) {
+  const root = ${SHADOW}
+  const el = root?.querySelector(selector)
+  if (el == null) return null
+  const r = el.getBoundingClientRect()
+  const x = r.left + r.width / 2
+  const y = r.top + r.height / 2
+  const top = root.elementFromPoint(x, y)
+  return r.width > 0 && r.height > 0 && top != null && el.contains(top) ? { x, y } : null
+}`
 
 async function clickOverlay(tab: Tab, selector: string, what: string): Promise<void> {
-  const at = await waitUntil(`${what} (shown, not covered)`, 10_000, () => evaluate<Point2 | null>(tab, centreOf(selector)))
+  const at = await waitUntil(`${what} (shown, not covered)`, 10_000, () => callInPage<Point2 | null>(tab, CENTRE_OF, selector))
   await click(tab, at)
 }
 
@@ -601,8 +668,8 @@ async function waitForText(tab: Tab, pattern: RegExp, what: string, timeoutMs = 
 
 type Mesh = { env: Record<string, string> }
 
-function meshCli(mesh: Mesh, ...args: string[]) {
-  return spawnSync(process.execPath, [TSX_CLI, MESH_CLI, ...args], { env: mesh.env, encoding: "utf8", timeout: 30_000 })
+function meshCli(mesh: Mesh, ...args: string[]): Promise<RunResult> {
+  return run(process.execPath, [TSX_CLI, MESH_CLI, ...args], { env: mesh.env, timeoutMs: 30_000 })
 }
 
 type PassResult = { problems: string[]; screenshot: string | null }
@@ -681,7 +748,7 @@ async function drive(tab: Tab, args: { origin: string; label: string; comment: s
   if (sent == null || sent[1] !== REVIEWER_ID) return { problems: [`the overlay did not send the note with a screenshot: ${status}`], screenshot: null }
 
   const message = await waitUntil("the note in the reviewer's inbox", 20_000, async () => {
-    const read = meshCli(mesh, "inbox", "--id", REVIEWER_ID)
+    const read = await meshCli(mesh, "inbox", "--id", REVIEWER_ID)
     if (read.status !== 0) throw new Error(read.stderr)
     return read.stdout.split("\n").map(parseInboxLine).find((m) => m?.correlationId === CORRELATION_ID) ?? null
   })
@@ -765,7 +832,7 @@ async function main(): Promise<number> {
   ] as const) {
     if (!existsSync(path)) throw new SetupError(`${relative(REPO_DIR, path)} is missing: ${fix}`)
   }
-  if (spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], { encoding: "utf8" }).status !== 0) {
+  if ((await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 15_000 })).status !== 0) {
     throw new SetupError("Docker is not available (the throwaway Redis runs in a container)")
   }
 
@@ -787,32 +854,30 @@ async function main(): Promise<number> {
 
   say(`starting a throwaway Redis on 127.0.0.1:${redisPort}`)
   const redisName = `glr-redis-${runId}`
-  cleanups.push(() => {
-    spawnSync("docker", ["rm", "-f", redisName], { stdio: "ignore" })
+  cleanups.push(async () => {
+    await run("docker", ["rm", "-f", redisName], { timeoutMs: 30_000 })
     say(`removed the Redis container ${redisName}`)
   })
   if (stopping) throw new Error("the run is stopping")
-  const run = spawnSync("docker", ["run", "-d", "--name", redisName, "-p", `127.0.0.1:${redisPort}:6379`, values["redis-image"]], { encoding: "utf8" })
-  if (run.status !== 0) throw new SetupError(`docker run failed: ${run.stderr.trim()}`)
-  await waitUntil("Redis", 15_000, async () =>
-    spawnSync("docker", ["exec", redisName, "redis-cli", "ping"], { encoding: "utf8" }).stdout.includes("PONG"),
-  )
+  const redis = await run("docker", ["run", "-d", "--name", redisName, "-p", `127.0.0.1:${redisPort}:6379`, values["redis-image"]], { timeoutMs: 120_000 })
+  if (redis.status !== 0) throw new SetupError(`docker run failed: ${redis.stderr.trim()}`)
+  await waitUntil("Redis", 15_000, async () => (await run("docker", ["exec", redisName, "redis-cli", "ping"], { timeoutMs: 5_000 })).stdout.includes("PONG"))
 
   const mesh: Mesh = { env: meshEnvironment(env, { redisUrl: `redis://127.0.0.1:${redisPort}`, home: meshHome, prefix: `glr${runId}` }) }
   await start("mesh daemon", process.execPath, [TSX_CLI, "src/daemon.ts"], { cwd: AGENT_MESH_DIR, env: mesh.env, log: join(work, "daemon.log") })
   const health = await waitUntil("the mesh daemon", 30_000, async () => {
-    const answer = meshCli(mesh, "health")
+    const answer = await meshCli(mesh, "health")
     return answer.status === 0 ? (JSON.parse(answer.stdout) as { socket?: string; hostname?: string }) : null
   })
   // The CLI must be talking to this daemon and no other.
   if (health.socket !== join(meshHome, "daemon.sock") || health.hostname !== "review-e2e") {
     throw new SetupError("the mesh CLI answered from another daemon than the throwaway one")
   }
-  const registered = meshCli(mesh, "register", "--id", REVIEWER_ID, "--role", "reviewer", "--deliver", "none", "--meta", `pid=${process.pid}`)
+  const registered = await meshCli(mesh, "register", "--id", REVIEWER_ID, "--role", "reviewer", "--deliver", "none", "--meta", `pid=${process.pid}`)
   if (registered.status !== 0) throw new SetupError(`registering ${REVIEWER_ID} failed: ${registered.stderr.trim()}`)
   say(`registered ${REVIEWER_ID} on the throwaway mesh`)
 
-  const built = spawnSync(process.execPath, ["scripts/build-client.ts"], { cwd: OVERLAY_DIR, env: mesh.env, encoding: "utf8" })
+  const built = await run(process.execPath, ["scripts/build-client.ts"], { cwd: OVERLAY_DIR, env: mesh.env, timeoutMs: 60_000 })
   if (built.status !== 0) throw new SetupError(`building the overlay failed: ${built.stderr.trim()}`)
   await start("overlay server", process.execPath, [
     "src/server/main.ts",
@@ -866,10 +931,10 @@ async function main(): Promise<number> {
   let visualPassed = false
   if (firstShot != null) {
     say(`check:visual ${relative(APP_DIR, firstShot)} checks/review-note.json`)
-    const check = spawnSync(
+    const check = await run(
       process.execPath,
       ["scripts/check-visual.ts", firstShot, "checks/review-note.json", ...(envFile == null ? [] : ["--env-file", envFile]), ...(values.record ? ["--record"] : [])],
-      { cwd: APP_DIR, encoding: "utf8" },
+      { cwd: APP_DIR, timeoutMs: 120_000 },
     )
     process.stdout.write(check.stdout)
     process.stderr.write(check.stderr)
@@ -887,12 +952,11 @@ async function main(): Promise<number> {
 }
 
 if (process.argv[1] != null && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const stopAndExit = (code: number) => {
-    stopping = true
-    void cleanUp().finally(() => process.exit(code))
-  }
-  process.once("SIGINT", () => stopAndExit(130))
-  process.once("SIGTERM", () => stopAndExit(143))
+  const stopAndExit = (code: number) => void cleanUp().finally(() => process.exit(code))
+  // `on`, not `once`: a second Ctrl-C waits for the same cleanup instead of killing
+  // this process (and leaving the detached ones) at once.
+  process.on("SIGINT", () => stopAndExit(130))
+  process.on("SIGTERM", () => stopAndExit(143))
   // A stuck step fails the run instead of leaving everything running.
   setTimeout(() => {
     console.error("[review-e2e] FAIL: the run took longer than 5 minutes")
@@ -900,6 +964,8 @@ if (process.argv[1] != null && resolve(process.argv[1]) === fileURLToPath(import
   }, 300_000).unref()
   main()
     .catch((error: unknown) => {
+      // Once a signal or the time limit has started the cleanup, an error is its echo.
+      if (stopping) return 1
       console.error(`[review-e2e] ${error instanceof SetupError ? "could not run" : "FAIL"}: ${(error as Error).message}`)
       printLogs()
       return error instanceof SetupError ? 2 : 1
