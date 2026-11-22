@@ -14,8 +14,13 @@ import { parkingSnapshot, type ParkingSnapshot } from "./routes/parking.ts"
 // - time: now in live mode (to the minute, so the same question within a minute is
 //   the same request and the ask route's cache and in-flight sharing still work);
 //   the recorded snapshot's time in recorded mode.
-// - garages: a parking feed that fails with nothing cached is an error the ask route
-//   answers with a 502; an answer about parking without garages would mislead.
+// - feeds: each feed (parking, bikes) gets at most FEED_BUDGET_MS, inside the ask
+//   route's deadline for the whole question; a feed that fails or is slower is left
+//   out and the notice says so, so one stalled feed does not sink a question the
+//   others can answer. Its request goes on and fills its route's cache for later.
+// - garages: without them (the parking feed failed or was too slow, or there is no
+//   recorded snapshot) the state says so in `missing.parking`; the ask route answers a
+//   question about parking with that error, and any other question without garages.
 // - parking age: the parking route keeps its last data when the feed fails, so a
 //   garage's own feed time can lag; garages more than 15 minutes behind the state's
 //   time are named in a notice, which goes into the question and the answer.
@@ -24,11 +29,14 @@ import { parkingSnapshot, type ParkingSnapshot } from "./routes/parking.ts"
 //   area reported is more than an hour before the state's time, Bolt's stations are
 //   left out, so no answer sends anyone to a bike that may not be there.
 
-type Options = Parameters<CityStateProvider["current"]>[0]
+// The ask route passes its deadline's signal: when it aborts (the deadline passed or
+// the client hung up), the state is not waited for any longer.
+type Options = Parameters<CityStateProvider["current"]>[0] & { signal?: AbortSignal }
 
 // A CityState with an optional line about its data, which the ask route returns as
-// the answer's `notice`. CityState itself (server/city-state.ts) stays as it is.
-export type LiveCityState = CityState & { notice?: string }
+// the answer's `notice`, and the reason the garages are missing, if they are.
+// CityState itself (server/city-state.ts) stays as it is.
+export type LiveCityState = CityState & { notice?: string; missing?: { parking?: string } }
 export type LiveCityStateProvider = { current(options: Options): Promise<LiveCityState> }
 
 // An error whose message is fit for the browser (it names no path, host or key).
@@ -37,6 +45,45 @@ export class CityStateError extends Error {}
 // Availability older than this is not trusted.
 export const STALE_AFTER_MS = 60 * 60_000
 
+// Each feed gets at most this long; the ask route's whole deadline is 7 s, so even with
+// both feeds at their limit the Decisions API keeps more than 4 s.
+export const FEED_BUDGET_MS = 2_500
+
+type Read<T> = { ok: true; value: T } | { ok: false; late: boolean }
+
+// `work` within `ms`, or why not: it failed, or it was late. When `signal` aborts first
+// (the whole question's deadline, or the client went), that reason is thrown instead.
+export function withinBudget<T>(work: Promise<T>, ms: number, signal?: AbortSignal): Promise<Read<T>> {
+  // The work's failure is always handled, also when nobody waits for it any more.
+  work.catch(() => {})
+  if (signal?.aborted) return Promise.reject(signal.reason)
+  return new Promise<Read<T>>((resolve, reject) => {
+    const finish = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener("abort", stop)
+    }
+    const stop = (): void => {
+      finish()
+      reject(signal!.reason)
+    }
+    const timer = setTimeout(() => {
+      finish()
+      resolve({ ok: false, late: true })
+    }, ms)
+    signal?.addEventListener("abort", stop, { once: true })
+    work.then(
+      (value) => {
+        finish()
+        resolve({ ok: true, value })
+      },
+      () => {
+        finish()
+        resolve({ ok: false, late: false })
+      },
+    )
+  })
+}
+
 export type LiveSources = {
   garages?: (options: Options) => Promise<ParkingSnapshot | null>
   bikes?: (options: Options) => Promise<Pick<BikesAnswer, "stations"> & Partial<Pick<BikesAnswer, "feeds" | "reported">>>
@@ -44,6 +91,7 @@ export type LiveSources = {
   places?: readonly Place[]
   now?: () => number
   staleAfterMs?: number
+  feedBudgetMs?: number
 }
 
 // Parking counts older than this, by each garage's own feed time, are named as old (the
@@ -122,22 +170,41 @@ export function createLiveCityState(sources: LiveSources = {}): LiveCityStatePro
 
   return {
     async current(options) {
-      const [parking, bikeData] = await Promise.all([
-        garages(options).catch((error: unknown) => {
-          throw new CityStateError("The parking feed did not answer.", { cause: error })
-        }),
-        bikes(options).catch(() => null),
+      // A question that is already over does not start the feeds' requests.
+      if (options.signal?.aborted) throw options.signal.reason
+      const budget = sources.feedBudgetMs ?? FEED_BUDGET_MS
+      const seconds = `${budget / 1000} s`
+      // Both feeds at once, each within its budget; a reason to stop (the deadline, a
+      // client that went) ends the wait for both.
+      const [parkingRead, bikeRead] = await Promise.all([
+        withinBudget(Promise.resolve().then(() => garages(options)), budget, options.signal),
+        withinBudget(Promise.resolve().then(() => bikes(options)), budget, options.signal),
       ])
-      if (parking == null) throw new CityStateError("There is no recorded parking data.")
-      const time = options.mode === "live" ? isoSeconds(Math.floor(now() / 60_000) * 60_000) : parking.time
+      const parking = parkingRead.ok ? parkingRead.value : null
+      const missingParking =
+        parking != null
+          ? null
+          : parkingRead.ok
+            ? "There is no recorded parking data."
+            : parkingRead.late
+              ? `The parking feed did not answer within ${seconds}.`
+              : "The parking feed did not answer."
+      const time =
+        options.mode === "live"
+          ? isoSeconds(Math.floor(now() / 60_000) * 60_000)
+          : (parking?.time ?? options.time ?? isoSeconds(now()))
       const at = options.mode === "live" ? now() : Date.parse(time)
       const notices: string[] = []
-      const oldParking = parkingNotice(parking.garages, at)
+      if (missingParking != null) notices.push(`Garages left out: ${missingParking.charAt(0).toLowerCase()}${missingParking.slice(1)}`)
+      const oldParking = parking == null ? null : parkingNotice(parking.garages, at)
       if (oldParking != null) notices.push(oldParking)
 
       let stations: BikeStationState[] = []
+      const bikeData = bikeRead.ok ? bikeRead.value : null
       const feeds = bikeData?.feeds == null ? [] : Object.values(bikeData.feeds)
-      if (bikeData == null || (feeds.length > 0 && feeds.every((f) => f === "missing"))) {
+      if (!bikeRead.ok && bikeRead.late) {
+        notices.push(`Shared bikes left out: the bike feeds did not answer within ${seconds}.`)
+      } else if (bikeData == null || (feeds.length > 0 && feeds.every((f) => f === "missing"))) {
         notices.push("Shared bikes left out: the bike feeds did not answer.")
       } else {
         const failed = bikeFeedNotice(bikeData.feeds)
@@ -149,11 +216,12 @@ export function createLiveCityState(sources: LiveSources = {}): LiveCityStatePro
 
       return {
         time,
-        garages: parking.garages,
+        garages: parking?.garages ?? [],
         bikes: stations,
         sectors: [...sectors],
         places: [...places],
         ...(notices.length === 0 ? {} : { notice: notices.join(" ") }),
+        ...(missingParking == null ? {} : { missing: { parking: missingParking } }),
       }
     },
   }

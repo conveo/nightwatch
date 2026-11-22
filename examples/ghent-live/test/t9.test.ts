@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, test } from "node:test"
 import type { BikeStationState, CityStateProvider, GarageState } from "../server/city-state.ts"
 import { FIXTURE_CITY_STATE } from "../server/city-state-fixture.ts"
@@ -8,17 +10,19 @@ import {
   bikeFeedNotice,
   boltIsStale,
   cityStateFor,
+  withinBudget,
   CityStateError,
   createLiveCityState,
   liveCityState,
   modeCityState,
+  FEED_BUDGET_MS,
   PARKING_STALE_MS,
   parkingNotice,
   STALE_AFTER_MS,
   withoutStaleBolt,
 } from "../server/city-state-live.ts"
 import type { DecisionRequest, DecisionResponse } from "../server/decisions.ts"
-import { AskError, createAskRoute } from "../server/routes/ask.ts"
+import { ASK_DEADLINE_MS, AskError, createAskRoute, MIN_DECIDE_MS, untilAborted } from "../server/routes/ask.ts"
 import { mergeBikeFeeds, reportedAt } from "../server/routes/bikes.ts"
 import type { ParkingSnapshot } from "../server/routes/parking.ts"
 import { SECTOR_NAMES } from "../src/layers/circulation.ts"
@@ -142,23 +146,33 @@ describe("live city state", () => {
     assert.deepEqual(mergeBikeFeeds({ donkeyLocations: [], donkeyAvailability: [], bolt: [], blueBike: [] }).reported, {})
   })
 
-  test("a parking feed failure is a 502 the route already handles; a bike feed failure leaves the bikes out", async () => {
+  test("without garages a parking question is a clear error and other questions still answer; a bike feed failure leaves the bikes out", async () => {
     const down = async (): Promise<ParkingSnapshot> => {
       throw new Error("parking feed answered 503 at some host")
     }
     const failing = createLiveCityState({ garages: down, bikes: bikesReported(undefined), now: () => NOW })
-    await assert.rejects(failing.current({ mode: "live", time: null }), (e: Error) => e instanceof CityStateError)
+    const state = await failing.current({ mode: "live", time: null })
+    assert.deepEqual(state.garages, [])
+    assert.deepEqual(state.missing, { parking: "The parking feed did not answer." })
+    assert.match(state.notice ?? "", /^Garages left out: the parking feed did not answer\./)
     const route = createAskRoute({ provider: failing, apiKey: () => "sk-test", decide: fake })
-    await assert.rejects(
-      route.ask({ ask: "busy:now", mode: "live", time: null }),
-      (e: AskError) => e instanceof AskError && e.status === 502 && e.message === "The parking feed did not answer.",
-    )
+    for (const ask of ["busy:now", "park:gravensteen"]) {
+      await assert.rejects(
+        route.ask({ ask, mode: "live", time: null }),
+        (e: AskError) => e instanceof AskError && e.status === 503 && e.message === "The parking feed did not answer. This question needs the garages: try again in a minute.",
+      )
+    }
+    const drive = await route.ask({ ask: "drive:coupure~portus-ganda", mode: "live", time: null })
+    assert.match(drive.notice ?? "", /^Garages left out/)
+    // A provider that throws a CityStateError still passes its message on.
+    const typed = createAskRoute({ provider: { current: () => Promise.reject(new CityStateError("The city's data is being updated.")) }, apiKey: () => "sk-test", decide: fake })
+    await assert.rejects(typed.ask({ ask: "busy:now", mode: "live", time: null }), (e: AskError) => e.status === 502 && e.message === "The city's data is being updated.")
     // Any other provider error's message is not passed on (it may name a path).
     const leaky = createAskRoute({ provider: { current: () => Promise.reject(new Error("ENOENT: /srv/app/x.json")) }, apiKey: () => "sk-test", decide: fake })
     await assert.rejects(leaky.ask({ ask: "busy:now", mode: "live", time: null }), (e: AskError) => e.status === 502 && !e.message.includes("ENOENT"))
 
     const noRecording = createLiveCityState({ garages: async () => null, bikes: bikesReported(undefined), now: () => NOW })
-    await assert.rejects(noRecording.current({ mode: "recorded", time: null }), /no recorded parking data/)
+    assert.deepEqual((await noRecording.current({ mode: "recorded", time: null })).missing, { parking: "There is no recorded parking data." })
 
     const bikesDown = async () => {
       throw new Error("timeout")
@@ -224,6 +238,237 @@ describe("data notices", () => {
       now: () => NOW,
     }).current({ mode: "live", time: null })
     assert.match(state.notice ?? "", /Donkey Republic bikes left out.*Bolt bikes left out/)
+  })
+})
+
+// One deadline per question (T9b): small budgets here, so the tests run in well under a
+// second; the real ones are 7 s for the question and 2.5 s per feed.
+describe("one deadline for a question", () => {
+  const DEADLINE = 300
+  const BUDGET = 40
+  const never = <T>() => new Promise<T>(() => {})
+  const later = <T>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms))
+  const counting = () => {
+    const calls: AbortSignal[] = []
+    const decide = async (request: DecisionRequest, options: { signal: AbortSignal }) => {
+      calls.push(options.signal)
+      return fake(request)
+    }
+    return { calls, decide }
+  }
+  const timed = async <T>(run: () => Promise<T>): Promise<{ ms: number; result: PromiseSettledResult<T> }> => {
+    const t0 = performance.now()
+    const [result] = await Promise.allSettled([run()])
+    return { ms: performance.now() - t0, result: result! }
+  }
+
+  test("the real deadline leaves the panel a second, and each feed's budget leaves the Decisions API most of it", () => {
+    assert.equal(ASK_DEADLINE_MS, 7_000)
+    assert.ok(ASK_DEADLINE_MS + 1_000 <= 8_000, "the panel (src/ask/panel.ts) waits 8 s")
+    assert.equal(FEED_BUDGET_MS, 2_500)
+    assert.ok(ASK_DEADLINE_MS - FEED_BUDGET_MS >= 4 * MIN_DECIDE_MS)
+  })
+
+  test("a stalled bike feed (never answers) is left out and the question is answered within the budget", async () => {
+    const { calls, decide } = counting()
+    const provider = createLiveCityState({ garages: parking, bikes: never, now: () => NOW, feedBudgetMs: BUDGET })
+    const route = createAskRoute({ provider, apiKey: () => "sk-test", decide, timeoutMs: DEADLINE })
+    const { ms, result } = await timed(() => route.ask({ ask: "park:gravensteen", mode: "live", time: null }))
+    assert.equal(result.status, "fulfilled")
+    const answer = (result as PromiseFulfilledResult<Awaited<ReturnType<typeof route.ask>>>).value
+    assert.equal(answer.notice, `Shared bikes left out: the bike feeds did not answer within ${BUDGET / 1000} s.`)
+    assert.ok(!answer.options.some((o) => o.value.startsWith("bikes:")))
+    assert.equal(calls.length, 1)
+    assert.ok(ms < BUDGET + 100, `${ms} ms`)
+  })
+
+  test("a slow feed (answers after its budget) is left out; slow parking makes a parking question a clear error in time", async () => {
+    const slowBikes = () => later(BUDGET * 3, { stations: [DONKEY, BOLT] })
+    const state = await createLiveCityState({ garages: parking, bikes: slowBikes, now: () => NOW, feedBudgetMs: BUDGET }).current({ mode: "live", time: null })
+    assert.deepEqual(state.bikes, [])
+    assert.deepEqual(state.garages, [GARAGE])
+
+    const { calls, decide } = counting()
+    const slowParking = () => later(BUDGET * 3, { time: "2026-11-22T19:41:00Z", garages: [GARAGE] })
+    const provider = createLiveCityState({ garages: slowParking, bikes: bikesReported(undefined), now: () => NOW, feedBudgetMs: BUDGET })
+    const route = createAskRoute({ provider, apiKey: () => "sk-test", decide, timeoutMs: DEADLINE })
+    const { ms, result } = await timed(() => route.ask({ ask: "park:gravensteen", mode: "live", time: null }))
+    assert.equal(result.status, "rejected")
+    const error = (result as PromiseRejectedResult).reason as AskError
+    assert.equal(error.status, 503)
+    assert.equal(error.message, `The parking feed did not answer within ${BUDGET / 1000} s. This question needs the garages: try again in a minute.`)
+    assert.equal(calls.length, 0, "no paid call for a question that cannot be answered")
+    assert.ok(ms < DEADLINE, `${ms} ms`)
+    // A question that does not need the garages is still answered, with the notice.
+    const drive = await route.ask({ ask: "drive:coupure~portus-ganda", mode: "live", time: null })
+    assert.match(drive.notice ?? "", /^Garages left out: the parking feed did not answer within/)
+  })
+
+  test("a failed feed is left out at once, with the notice", async () => {
+    const { decide } = counting()
+    const failing = () => Promise.reject(new Error("socket hang up"))
+    const route = createAskRoute({
+      provider: createLiveCityState({ garages: parking, bikes: failing, now: () => NOW, feedBudgetMs: BUDGET }),
+      apiKey: () => "sk-test",
+      decide,
+      timeoutMs: DEADLINE,
+    })
+    const { ms, result } = await timed(() => route.ask({ ask: "park:gravensteen", mode: "live", time: null }))
+    assert.equal(result.status, "fulfilled")
+    assert.equal((result as PromiseFulfilledResult<{ notice?: string }>).value.notice, "Shared bikes left out: the bike feeds did not answer.")
+    assert.ok(ms < BUDGET, `${ms} ms`)
+  })
+
+  test("a city state that never arrives ends at the deadline, and no Decisions call starts, then or later", async () => {
+    const { calls, decide } = counting()
+    let late: () => void = () => {}
+    const provider = { current: () => new Promise<typeof FIXTURE_CITY_STATE>((resolve) => (late = () => resolve(FIXTURE_CITY_STATE))) }
+    const route = createAskRoute({ provider, apiKey: () => "sk-test", decide, timeoutMs: DEADLINE })
+    const { ms, result } = await timed(() => route.ask({ ask: "busy:now", mode: "live", time: null }))
+    assert.equal(result.status, "rejected")
+    assert.equal(((result as PromiseRejectedResult).reason as AskError).status, 504)
+    assert.ok(ms >= DEADLINE - 5 && ms < DEADLINE + 100, `${ms} ms`)
+    late()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(calls.length, 0)
+  })
+
+  test("with too little time left after reading the city, the Decisions call is not started", async () => {
+    const { calls, decide } = counting()
+    const provider = { current: () => later(DEADLINE - 20, FIXTURE_CITY_STATE) }
+    const route = createAskRoute({ provider, apiKey: () => "sk-test", decide, timeoutMs: DEADLINE, minDecideMs: 50 })
+    await assert.rejects(route.ask({ ask: "busy:now", mode: "live", time: null }), (e: AskError) => e.status === 504 && /took too long/.test(e.message))
+    assert.equal(calls.length, 0)
+  })
+
+  test("a client that stops waiting gets no Decisions call, and one in flight is aborted", async () => {
+    const { calls, decide } = counting()
+    const gone = new AbortController()
+    const provider = { current: () => later(30, FIXTURE_CITY_STATE) }
+    const route = createAskRoute({ provider, apiKey: () => "sk-test", decide, timeoutMs: DEADLINE })
+    const asked = route.ask({ ask: "busy:now", mode: "live", time: null }, { signal: gone.signal })
+    gone.abort()
+    await assert.rejects(asked, (e: AskError) => e.status === 499)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    assert.equal(calls.length, 0)
+
+    const seen: { signal?: AbortSignal } = {}
+    const hanging = (_request: DecisionRequest, options: { signal: AbortSignal }) => {
+      seen.signal = options.signal
+      return never<DecisionResponse>()
+    }
+    const leaving = new AbortController()
+    const inFlight = createAskRoute({ apiKey: () => "sk-test", decide: hanging, timeoutMs: DEADLINE })
+    const pending = inFlight.ask({ ask: "busy:now" }, { signal: leaving.signal })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.ok(seen.signal != null && !seen.signal.aborted)
+    leaving.abort()
+    await assert.rejects(pending, (e: AskError) => e.status === 499)
+    assert.ok(seen.signal.aborted, "the call in flight is aborted")
+    assert.equal((seen.signal.reason as AskError).status, 499)
+  })
+
+  test("a question already over reads nothing, and work nobody waits for never rejects unhandled", async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      let reads = 0
+      const counted = <T>(value: T) => async () => {
+        reads++
+        return value
+      }
+      const provider = createLiveCityState({ garages: counted({ time: "2026-11-22T19:41:00Z", garages: [GARAGE] }), bikes: counted({ stations: [] }), now: () => NOW })
+      const { calls, decide } = counting()
+      const route = createAskRoute({ provider, apiKey: () => "sk-test", decide, timeoutMs: DEADLINE })
+      await assert.rejects(route.ask({ ask: "park:gravensteen", mode: "live", time: null }, { signal: AbortSignal.abort() }), (e: AskError) => e.status === 499)
+      await assert.rejects(provider.current({ mode: "live", time: null, signal: AbortSignal.abort() }))
+      assert.equal(reads, 0)
+      assert.equal(calls.length, 0)
+
+      // Work handed over after the wait has ended still has its failure handled.
+      const failsLater = () => new Promise<never>((_, reject) => setTimeout(() => reject(new Error("late failure")), 5))
+      await assert.rejects(untilAborted(failsLater(), AbortSignal.abort()))
+      await assert.rejects(withinBudget(failsLater(), BUDGET, AbortSignal.abort()))
+      const gone = new AbortController()
+      const waiting = untilAborted(failsLater(), gone.signal)
+      gone.abort()
+      await assert.rejects(waiting)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      assert.deepEqual(unhandled, [])
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
+  })
+
+  test("without a key, a recorded answer whose file does not arrive ends at the deadline", { skip: process.platform === "win32" }, async () => {
+    // A named pipe nobody writes to: reading it waits until someone does.
+    const dir = mkdtempSync(join(tmpdir(), "ghent-live-fifo-"))
+    const fifo = join(dir, "recordings.json")
+    if (spawnSync("mkfifo", [fifo]).status !== 0) return
+    try {
+      const route = createAskRoute({ apiKey: () => undefined, recordingsFile: fifo, timeoutMs: DEADLINE })
+      const { ms, result } = await timed(() => route.ask({ ask: "busy:now" }))
+      assert.equal(result.status, "rejected")
+      assert.equal(((result as PromiseRejectedResult).reason as AskError).status, 504)
+      assert.ok(ms < DEADLINE + 100, `${ms} ms`)
+    } finally {
+      // Let the pending read finish, so nothing is left open.
+      writeFileSync(fifo, "{}")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("a call two requests share goes on while one of them waits, and stops when the last one leaves", async () => {
+    const shared: { signal?: AbortSignal } = {}
+    let calls = 0
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const decide = async (request: DecisionRequest, options: { signal: AbortSignal }) => {
+      calls++
+      shared.signal = options.signal
+      await gate
+      return fake(request)
+    }
+    const route = createAskRoute({ apiKey: () => "sk-test", decide, timeoutMs: DEADLINE })
+    const first = new AbortController()
+    const a = route.ask({ ask: "busy:now" }, { signal: first.signal })
+    const b = route.ask({ ask: "busy:now" })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    first.abort()
+    await assert.rejects(a, (e: AskError) => e.status === 499)
+    assert.ok(shared.signal != null && !shared.signal.aborted, "the other request still waits for it")
+    release()
+    assert.equal((await b).answer, "Yes")
+    assert.equal(calls, 1)
+
+    const both = [new AbortController(), new AbortController()]
+    const last: { signal?: AbortSignal } = {}
+    let hangCalls = 0
+    const hang = createAskRoute({
+      apiKey: () => "sk-test",
+      decide: (_r, o) => {
+        hangCalls++
+        last.signal = o.signal
+        return never<DecisionResponse>()
+      },
+      timeoutMs: DEADLINE,
+    })
+    const waits = both.map((c) => hang.ask({ ask: "busy:now" }, { signal: c.signal }))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    both[0]!.abort()
+    assert.ok(last.signal != null && !last.signal.aborted)
+    both[1]!.abort()
+    await Promise.allSettled(waits)
+    assert.ok(last.signal.aborted, "aborted once nobody waits")
+    // The next request starts a new call rather than joining the aborted one.
+    const third = new AbortController()
+    const again = hang.ask({ ask: "busy:now" }, { signal: third.signal })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(hangCalls, 2)
+    third.abort()
+    await assert.rejects(again)
   })
 })
 

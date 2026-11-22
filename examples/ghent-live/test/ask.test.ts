@@ -292,6 +292,36 @@ test("a timed-out upstream request is aborted, not left running", async () => {
   assert.ok(aborted instanceof AskError && aborted.status === 504)
 })
 
+test("a client that hangs up aborts the Decisions call it was waiting for", async () => {
+  const seen: { signal?: AbortSignal } = {}
+  let started: () => void = () => {}
+  const running = new Promise<void>((resolve) => (started = resolve))
+  const hanging = (_request: DecisionRequest, options: { signal: AbortSignal }) => {
+    seen.signal = options.signal
+    started()
+    return new Promise<DecisionResponse>(() => {})
+  }
+  const { base, close } = await serve(createAskRoute({ apiKey: () => "sk-test", decide: hanging }))
+  try {
+    const client = new AbortController()
+    const asked = fetch(`${base}/api/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ask: "busy:now" }),
+      signal: client.signal,
+    }).catch(() => null)
+    await running
+    assert.ok(seen.signal != null && !seen.signal.aborted)
+    client.abort()
+    await asked
+    for (let i = 0; i < 50 && !seen.signal.aborted; i++) await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.ok(seen.signal.aborted, "the call is aborted when its client goes")
+    assert.equal((seen.signal.reason as AskError).status, 499)
+  } finally {
+    await close()
+  }
+})
+
 test("the same question asked twice at once calls the API once", async () => {
   let calls = 0
   let release: () => void = () => {}

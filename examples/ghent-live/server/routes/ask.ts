@@ -50,8 +50,14 @@ import {
 
 export const RECORDINGS_FILE = fileURLToPath(new URL("../ask-recordings.json", import.meta.url))
 
-// The panel gives up after 8 s; the server answers first, with a reason.
-export const LIVE_TIMEOUT_MS = 7_000
+// One deadline for the whole question, from the moment the request arrives: reading
+// the body, the city's data and the Decisions call. The panel stops waiting after 8 s
+// (ANSWER_TIMEOUT_MS in src/ask/panel.ts), so the server answers, or says why not, by
+// 7 s, leaving a second for the answer to reach the panel.
+export const ASK_DEADLINE_MS = 7_000
+// The Decisions request is not started with less than this left of the deadline: it
+// would most likely be cut off after it had cost a request.
+export const MIN_DECIDE_MS = 1_000
 // The same question on the same data within this time is answered from memory.
 const CACHE_TTL_MS = 5 * 60_000
 const CACHE_MAX = 200
@@ -312,6 +318,61 @@ function upstreamError(error: unknown): AskError {
   return new AskError(502, status == null ? "Could not reach the Decisions API." : `The Decisions API answered HTTP ${status}.`)
 }
 
+// The reason a request's signal aborts with when its client hangs up: nobody is
+// waiting for the answer any more.
+const clientGone = () => new AskError(499, "The client stopped waiting.")
+
+export type Deadline = {
+  // Aborts when the deadline passes (an AskError 504) or the client goes (499).
+  signal: AbortSignal
+  // Milliseconds left.
+  remaining(): number
+  // Clears the timer; call it when the request is answered.
+  done(): void
+}
+
+// A deadline `ms` from now, which also aborts when `outer` does (a client that went
+// away).
+export function startDeadline(ms: number, outer?: AbortSignal): Deadline {
+  const controller = new AbortController()
+  const end = performance.now() + ms
+  const timer = setTimeout(() => controller.abort(new AskError(504, `No answer within ${ms / 1000} s. Try again in a moment.`)), ms)
+  const onOuter = () => controller.abort(outer!.reason instanceof AskError ? outer!.reason : clientGone())
+  if (outer?.aborted) onOuter()
+  else outer?.addEventListener("abort", onOuter, { once: true })
+  return {
+    signal: controller.signal,
+    remaining: () => Math.max(0, end - performance.now()),
+    done: () => {
+      clearTimeout(timer)
+      outer?.removeEventListener("abort", onOuter)
+    },
+  }
+}
+
+// `work`, or the signal's reason as soon as it aborts, whichever comes first. The work
+// itself goes on (a feed's request still fills its route's cache for the next question),
+// and its failure is always handled here, so work nobody waits for any more never
+// reports an unhandled rejection.
+export function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  work.catch(() => {})
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(signal.reason)
+    signal.addEventListener("abort", stop, { once: true })
+    work.then(
+      (value) => {
+        signal.removeEventListener("abort", stop)
+        resolve(value)
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", stop)
+        reject(error)
+      },
+    )
+  })
+}
+
 // decide() in server/decisions.ts takes no AbortSignal, so a request that timed out
 // would keep its connection open; this is the same live call, abortable.
 export async function decideLive(
@@ -329,33 +390,24 @@ export async function decideLive(
   return JSON.parse(text) as DecisionResponse
 }
 
-// Runs `run` with a signal that aborts after `ms`, and stops waiting at the same time.
-async function withDeadline<T>(run: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
-  const abort = new AbortController()
-  let timer: NodeJS.Timeout | undefined
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      const error = new AskError(504, `The Decisions API did not answer within ${ms / 1000} s.`)
-      // Settle first, so the race reports the timeout and not the client's abort.
-      reject(error)
-      abort.abort(error)
-    }, ms)
-  })
-  try {
-    return await Promise.race([run(abort.signal), deadline])
-  } finally {
-    clearTimeout(timer)
-  }
+// A city state provider that may be given the request's signal (the live one gives
+// each feed its own budget inside it); one that ignores it, like the fixture's, is
+// still bounded by the deadline.
+export type AskCityStateProvider = {
+  current(options: { mode: "fixture" | "recorded" | "live"; time: string | null; signal?: AbortSignal }): Promise<LiveCityState>
 }
 
 export type AskOptions = {
-  provider?: CityStateProvider
+  provider?: CityStateProvider | AskCityStateProvider
   // The key, read on each request so a server started without one can be given one.
   apiKey?: () => string | undefined
   recordingsFile?: string
   // The Decisions API client; tests pass a fake one. It must stop when `signal` aborts.
   decide?: (request: DecisionRequest, options: { apiKey: string; signal: AbortSignal }) => Promise<DecisionResponse>
+  // The whole question's deadline (ASK_DEADLINE_MS), and the least time left for which
+  // the Decisions request is still started (MIN_DECIDE_MS, at most a quarter of it).
   timeoutMs?: number
+  minDecideMs?: number
   // The proxy hosts whose pages may ask (GHENT_LIVE_ALLOWED_HOSTS), read on each request.
   allowedHosts?: () => readonly string[]
 }
@@ -395,18 +447,64 @@ export function sameOriginOrAllowed(req: Pick<IncomingMessage, "headers">, allow
   })
 }
 
-export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Partial<AskRequest>): Promise<AskReply> } {
-  const provider = options.provider ?? fixtureCityState
+// A parking question and "is the centre busy" are about the garages: without them
+// there is nothing to answer from. The others are not.
+function needsGarages(question: AskQuestion): boolean {
+  return question.template === "park" || question.template === "busy"
+}
+
+export function createAskRoute(
+  options: AskOptions = {},
+): Route & { ask(body: Partial<AskRequest>, options?: { signal?: AbortSignal }): Promise<AskReply> } {
+  const provider: AskCityStateProvider = options.provider ?? fixtureCityState
   const apiKey = options.apiKey ?? (() => env.OPENAI_API_KEY)
   const allowedHosts = options.allowedHosts ?? (() => parseAllowedHosts(env.GHENT_LIVE_ALLOWED_HOSTS))
   const ask = options.decide ?? decideLive
+  const deadlineMs = options.timeoutMs ?? ASK_DEADLINE_MS
+  const minDecideMs = options.minDecideMs ?? Math.min(MIN_DECIDE_MS, deadlineMs / 4)
   const cache = new Map<string, { at: number; response: DecisionResponse }>()
   // One upstream call per question and data at a time: a shared view opened twice
-  // before the first answer arrives waits for that answer instead of paying twice.
-  const inflight = new Map<string, Promise<DecisionResponse>>()
+  // before the first answer arrives waits for that answer instead of paying twice. The
+  // call is aborted when the last request waiting for it has gone (its deadline
+  // passed or its client hung up), so nobody pays for an answer nobody reads.
+  type Inflight = { key: string; promise: Promise<DecisionResponse>; abort: AbortController; waiters: number }
+  const inflight = new Map<string, Inflight>()
   let recordings: Promise<Recordings> | null = null
 
-  async function answer(body: Partial<AskRequest>): Promise<AskReply> {
+  function join(entry: Inflight, signal: AbortSignal): Promise<DecisionResponse> {
+    entry.waiters++
+    return new Promise<DecisionResponse>((resolve, reject) => {
+      let settled = false
+      const settle = (): boolean => {
+        if (settled) return false
+        settled = true
+        entry.waiters--
+        signal.removeEventListener("abort", leave)
+        return true
+      }
+      function leave(): void {
+        if (!settle()) return
+        if (entry.waiters === 0) {
+          entry.abort.abort(signal.reason)
+          if (inflight.get(entry.key) === entry) inflight.delete(entry.key)
+        }
+        reject(signal.reason)
+      }
+      if (signal.aborted) return leave()
+      signal.addEventListener("abort", leave, { once: true })
+      entry.promise.then(
+        (response) => {
+          if (settle()) resolve(response)
+        },
+        (error: unknown) => {
+          if (settle()) reject(error)
+        },
+      )
+    })
+  }
+
+  // Answers within `deadline`, which started when the request arrived.
+  async function answerWithin(body: Partial<AskRequest>, deadline: Deadline): Promise<AskReply> {
     const started = performance.now()
     const question = parseAsk(typeof body.ask === "string" ? body.ask : null)
     if (question == null) {
@@ -414,14 +512,20 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
     }
     const mode = body.mode === "recorded" || body.mode === "live" ? body.mode : "fixture"
     const time = typeof body.time === "string" && !Number.isNaN(Date.parse(body.time)) ? body.time : null
-    // A live provider may add a `notice` to the state; CityState itself has none.
+    // A live provider may add a `notice` to the state; CityState itself has none. It is
+    // given the deadline's signal and waited for no longer than the deadline.
     let state: LiveCityState
     try {
-      state = await provider.current({ mode, time })
+      // A request that is already over (its client went) does not read the city at all.
+      if (deadline.signal.aborted) throw deadline.signal.reason
+      state = await untilAborted(provider.current({ mode, time, signal: deadline.signal }), deadline.signal)
     } catch (error) {
       if (error instanceof AskError) throw error
       // Any other error's message may name a file or host; only a CityStateError's is passed on.
       throw new AskError(502, error instanceof CityStateError ? error.message : "Could not read the city's data.")
+    }
+    if (state.missing?.parking != null && needsGarages(question)) {
+      throw new AskError(503, `${state.missing.parking} This question needs the garages: try again in a minute.`)
     }
     const plan = planAsk(question, state)
     const key = recordingKey(plan.request)
@@ -439,7 +543,8 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
     const secret = apiKey()
     if (secret == null || secret === "") {
       recordings ??= readRecordings(options.recordingsFile)
-      const all = await recordings
+      // Within the deadline too; the shared read goes on for the requests after this one.
+      const all = await untilAborted(recordings, deadline.signal)
       const recorded = Object.hasOwn(all, key) ? all[key] : undefined
       if (recorded == null) {
         throw new AskError(
@@ -449,9 +554,15 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
       }
       return answerFrom(plan, recorded, meta("recorded"))
     }
-    let pending = inflight.get(key)
-    if (pending == null) {
-      const call = withDeadline((signal) => ask(plan.request, { apiKey: secret, signal }), options.timeoutMs ?? LIVE_TIMEOUT_MS)
+    let entry = inflight.get(key)
+    if (entry == null) {
+      // A paid request starts only for a client still waiting, with time to answer.
+      if (deadline.signal.aborted) throw deadline.signal.reason
+      if (deadline.remaining() < minDecideMs) {
+        throw new AskError(504, "No answer in time: reading the city's data took too long. Try again in a moment.")
+      }
+      const abort = new AbortController()
+      const promise: Promise<DecisionResponse> = ask(plan.request, { apiKey: secret, signal: abort.signal })
         .then((response) => {
           // Only an answer the panel can show is kept; a refusal is asked again next time.
           answerFrom(plan, response, meta("live"))
@@ -459,17 +570,32 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
           cache.set(key, { at: Date.now(), response: { model: response.model, answers: response.answers } })
           return response
         })
-        .finally(() => inflight.delete(key))
-      inflight.set(key, call)
-      pending = call
+        .finally(() => {
+          if (inflight.get(key)?.promise === promise) inflight.delete(key)
+        })
+      // Every waiter handles the outcome; this keeps a call nobody waits for any more
+      // from reporting an unhandled rejection.
+      promise.catch(() => {})
+      entry = { key, promise, abort, waiters: 0 }
+      inflight.set(key, entry)
     }
     let response: DecisionResponse
     try {
-      response = await pending
+      response = await join(entry, deadline.signal)
     } catch (error) {
       throw upstreamError(error)
     }
     return answerFrom(plan, response, meta("live"))
+  }
+
+  // A question asked directly (the tests, the --record path) gets its own deadline.
+  async function answer(body: Partial<AskRequest>, opts: { signal?: AbortSignal } = {}): Promise<AskReply> {
+    const deadline = startDeadline(deadlineMs, opts.signal)
+    try {
+      return await answerWithin(body, deadline)
+    } finally {
+      deadline.done()
+    }
   }
 
   return {
@@ -486,26 +612,42 @@ export function createAskRoute(options: AskOptions = {}): Route & { ask(body: Pa
         const failure: AskFailure = { ask: "", question: null, error: "Only the app's own page can ask." }
         return sendJson(res, 403, failure)
       }
-      let body: Partial<AskRequest>
-      try {
-        const parsed = await readJson<unknown>(req, 4 * 1024)
-        if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object")
-        body = parsed as Partial<AskRequest>
-      } catch {
-        const failure: AskFailure = { ask: "", question: null, error: 'Send JSON like {"ask": "park:gravensteen"}.' }
-        return sendJson(res, 400, failure)
+      // The deadline starts now and covers reading the body, the city's data and the
+      // Decisions call; a client that hangs up ends it too (the response then closes
+      // before it is finished).
+      const gone = new AbortController()
+      res.once("close", () => {
+        if (!res.writableFinished) gone.abort(clientGone())
+      })
+      const deadline = startDeadline(deadlineMs, gone.signal)
+      const reply = (status: number, payload: unknown): void => {
+        if (!gone.signal.aborted && !res.destroyed) sendJson(res, status, payload)
       }
       try {
-        sendJson(res, 200, await answer(body))
-      } catch (error) {
-        const failed = upstreamError(error)
-        const question = parseAsk(typeof body.ask === "string" ? body.ask : null)
-        const failure: AskFailure = {
-          ask: question == null ? "" : formatAsk(question),
-          question: question == null ? null : questionText(question),
-          error: failed.message,
+        let body: Partial<AskRequest>
+        try {
+          const parsed = await untilAborted(readJson<unknown>(req, 4 * 1024), deadline.signal)
+          if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object")
+          body = parsed as Partial<AskRequest>
+        } catch (error) {
+          if (error instanceof AskError) return reply(error.status, { ask: "", question: null, error: error.message } satisfies AskFailure)
+          const failure: AskFailure = { ask: "", question: null, error: 'Send JSON like {"ask": "park:gravensteen"}.' }
+          return reply(400, failure)
         }
-        sendJson(res, failed.status, failure)
+        try {
+          reply(200, await answerWithin(body, deadline))
+        } catch (error) {
+          const failed = upstreamError(error)
+          const question = parseAsk(typeof body.ask === "string" ? body.ask : null)
+          const failure: AskFailure = {
+            ask: question == null ? "" : formatAsk(question),
+            question: question == null ? null : questionText(question),
+            error: failed.message,
+          }
+          reply(failed.status, failure)
+        }
+      } finally {
+        deadline.done()
       }
     },
   }
