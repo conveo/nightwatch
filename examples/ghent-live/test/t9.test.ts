@@ -89,11 +89,14 @@ describe("live city state", () => {
     assert.deepEqual(state.places, [...PLACES])
   })
 
-  test("recorded mode reads the nearest parking snapshot and takes its time, with no network", async () => {
+  test("recorded mode reads the nearest parking snapshot and takes its time, with no network; it has no recorded bikes", async () => {
     const state = await liveCityState.current({ mode: "recorded", time: "2026-11-22T19:00:00Z" })
     assert.equal(state.time, "2026-11-22T19:00:06Z")
     assert.ok(state.garages.length > 0 && state.garages.some((g) => g.slug === "vrijdagmarkt"))
-    assert.ok(state.bikes.length > 0)
+    // The bikes route answers recorded mode with its sample, which is not data about this time.
+    assert.deepEqual(state.bikes, [])
+    assert.deepEqual(state.missing, { bikes: "There is no recorded bike data." })
+    assert.match(state.notice ?? "", /Shared bikes left out: there is no recorded bike data\./)
     assert.deepEqual(state.sectors, [...SECTOR_NAMES])
   })
 
@@ -172,7 +175,10 @@ describe("live city state", () => {
     await assert.rejects(leaky.ask({ ask: "busy:now", mode: "live", time: null }), (e: AskError) => e.status === 502 && !e.message.includes("ENOENT"))
 
     const noRecording = createLiveCityState({ garages: async () => null, bikes: bikesReported(undefined), now: () => NOW })
-    assert.deepEqual((await noRecording.current({ mode: "recorded", time: null })).missing, { parking: "There is no recorded parking data." })
+    assert.deepEqual((await noRecording.current({ mode: "recorded", time: null })).missing, {
+      parking: "There is no recorded parking data.",
+      bikes: "There is no recorded bike data.",
+    })
 
     const bikesDown = async () => {
       throw new Error("timeout")
@@ -238,6 +244,112 @@ describe("data notices", () => {
       now: () => NOW,
     }).current({ mode: "live", time: null })
     assert.match(state.notice ?? "", /Donkey Republic bikes left out.*Bolt bikes left out/)
+  })
+})
+
+// What each question needs (T9c): a parking question and "busy" need the garages, a free
+// question needs the whole city state, a drive question needs neither feed. A question
+// without what it needs is a clear 503 before any paid call; with it, it is answered,
+// with the notice for anything else that is missing.
+describe("each question has the data it needs", () => {
+  const counting = () => {
+    const calls: DecisionRequest[] = []
+    const decide = async (request: DecisionRequest) => {
+      calls.push(request)
+      return fake(request)
+    }
+    return { calls, decide }
+  }
+  const down = () => Promise.reject(new Error("feed down"))
+  const routeWith = (sources: Parameters<typeof createLiveCityState>[0]) => {
+    const { calls, decide } = counting()
+    const route = createAskRoute({ provider: createLiveCityState({ now: () => NOW, ...sources }), apiKey: () => "sk-test", decide })
+    return { calls, route }
+  }
+  const FREE = "q:Is there space at Vrijdagmarkt?"
+
+  test("a free question with the garages missing is a 503 naming them, and no Decisions call is made", async () => {
+    const { calls, route } = routeWith({ garages: down, bikes: bikesReported(undefined) })
+    await assert.rejects(
+      route.ask({ ask: FREE, mode: "live", time: null }),
+      (e: AskError) => e.status === 503 && e.message === "The parking feed did not answer. This question needs the garages and the bike stations: try again in a minute.",
+    )
+    assert.equal(calls.length, 0)
+  })
+
+  test("a free question with the bike stations missing is a 503 naming them, and no Decisions call is made", async () => {
+    const { calls, route } = routeWith({ garages: parking, bikes: down })
+    await assert.rejects(
+      route.ask({ ask: FREE, mode: "live", time: null }),
+      (e: AskError) => e.status === 503 && e.message === "The bike feeds did not answer. This question needs the garages and the bike stations: try again in a minute.",
+    )
+    const both = routeWith({ garages: down, bikes: down })
+    await assert.rejects(both.route.ask({ ask: FREE, mode: "live", time: null }), (e: AskError) => e.status === 503 && /parking feed.*bike feeds/.test(e.message))
+    assert.equal(calls.length + both.calls.length, 0)
+  })
+
+  test("a free question with everything present is answered as before, from the whole state", async () => {
+    const { calls, route } = routeWith({ garages: parking, bikes: bikesReported(new Date(NOW - 5 * 60_000).toISOString()) })
+    const answer = await route.ask({ ask: FREE, mode: "live", time: null })
+    assert.equal(answer.kind, "predicate")
+    assert.equal(answer.notice, undefined)
+    assert.equal(calls.length, 1)
+    const context = JSON.stringify(calls[0])
+    assert.match(context, /Vrijdagmarkt: 248 of 602 places free/)
+    assert.match(context, /Belfortstraat 18 \(donkey\): 2 bikes/)
+  })
+
+  test("only the stale Bolt stations left out, or one operator down, a free question still answers, with the notice", async () => {
+    const stale = routeWith({ garages: parking, bikes: bikesReported("2026-07-17T08:25:15Z") })
+    const a = await stale.route.ask({ ask: FREE, mode: "live", time: null })
+    assert.match(a.notice ?? "", /^Bolt bikes left out/)
+    assert.match(JSON.stringify(stale.calls[0]), /About this data: Bolt bikes left out/)
+    const partial = routeWith({ garages: parking, bikes: async () => ({ stations: [DONKEY], feeds: { donkey: "ok", bolt: "missing", "blue-bike": "ok" } as const }) })
+    const b = await partial.route.ask({ ask: FREE, mode: "live", time: null })
+    assert.match(b.notice ?? "", /Bolt bikes left out: its feed did not answer/)
+  })
+
+  test("a drive question needs neither feed: with both missing it is answered, with the notice", async () => {
+    const { calls, route } = routeWith({ garages: down, bikes: down })
+    const answer = await route.ask({ ask: "drive:coupure~portus-ganda", mode: "live", time: null })
+    assert.equal(answer.kind, "predicate")
+    assert.match(answer.notice ?? "", /^Garages left out: the parking feed did not answer\. Shared bikes left out: the bike feeds did not answer\./)
+    assert.equal(calls.length, 1)
+  })
+
+  test("recorded mode: a parking question is answered from the garages, with the notice; a free question is a 503", async () => {
+    const { calls, decide } = counting()
+    const route = createAskRoute({ provider: liveCityState, apiKey: () => "sk-test", decide })
+    const park = await route.ask({ ask: "park:gravensteen", mode: "recorded", time: "2026-11-22T19:00:00Z" })
+    assert.ok(park.options.every((o) => o.value.startsWith("garage:")))
+    assert.match(park.notice ?? "", /no recorded bike data/)
+    await assert.rejects(route.ask({ ask: FREE, mode: "recorded", time: "2026-11-22T19:00:00Z" }), (e: AskError) => e.status === 503 && /no recorded bike data/.test(e.message))
+    assert.equal(calls.length, 1)
+  })
+
+  test("a parking feed that lists no garages counts as missing, and busy needs a garage in the centre", async () => {
+    const empty = routeWith({ garages: async () => ({ time: "2026-11-22T19:41:00Z", garages: [] }), bikes: bikesReported(undefined) })
+    await assert.rejects(empty.route.ask({ ask: "park:gravensteen", mode: "live", time: null }), (e: AskError) => e.status === 503 && e.message.startsWith("The parking feed listed no garages."))
+    const far: GarageState = { ...GARAGE, slug: "the-loop", name: "The Loop", lat: 51.0254, lon: 3.6865 }
+    const outside = routeWith({ garages: async () => ({ time: "2026-11-22T19:41:00Z", garages: [far] }), bikes: bikesReported(undefined) })
+    await assert.rejects(outside.route.ask({ ask: "busy:now", mode: "live", time: null }), (e: AskError) => e.status === 503 && /No garage within 1\.5 km/.test(e.message))
+    assert.equal(empty.calls.length + outside.calls.length, 0)
+  })
+
+  test("every garage full (a closed one counts as full) and no bike data is a 503 that says so, not 'no bike has bikes'", async () => {
+    const closed: GarageState = { ...GARAGE, available: 0 }
+    const noBikes = routeWith({ garages: async () => ({ time: "2026-11-22T19:41:00Z", garages: [closed] }), bikes: down })
+    await assert.rejects(
+      noBikes.route.ask({ ask: "park:gravensteen", mode: "live", time: null }),
+      (e: AskError) => e.status === 503 && e.message === "No garage has free places, and the bike feeds did not answer.",
+    )
+    const empty = routeWith({ garages: async () => ({ time: "2026-11-22T19:41:00Z", garages: [closed] }), bikes: async () => ({ stations: [{ ...DONKEY, available: 0 }] }) })
+    await assert.rejects(empty.route.ask({ ask: "park:gravensteen", mode: "live", time: null }), (e: AskError) => e.status === 409)
+    // A closed garage (no places) is never offered as a place to park.
+    const open = routeWith({ garages: async () => ({ time: "2026-11-22T19:41:00Z", garages: [closed, { ...GARAGE, slug: "reep", name: "Reep", available: 30 }] }), bikes: bikesReported(undefined) })
+    const answer = await open.route.ask({ ask: "park:gravensteen", mode: "live", time: null })
+    assert.ok(!answer.options.some((o) => o.value === "garage:vrijdagmarkt"))
+    assert.equal(noBikes.calls.length + empty.calls.length, 0)
   })
 })
 

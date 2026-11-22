@@ -18,9 +18,12 @@ import { parkingSnapshot, type ParkingSnapshot } from "./routes/parking.ts"
 //   route's deadline for the whole question; a feed that fails or is slower is left
 //   out and the notice says so, so one stalled feed does not sink a question the
 //   others can answer. Its request goes on and fills its route's cache for later.
-// - garages: without them (the parking feed failed or was too slow, or there is no
-//   recorded snapshot) the state says so in `missing.parking`; the ask route answers a
-//   question about parking with that error, and any other question without garages.
+// - missing parts: without the garages (the parking feed failed, was too slow, or
+//   listed none, or there is no recorded snapshot) or without the bike stations (the
+//   bike feeds failed or were too slow, or recorded mode, which has no recorded bike
+//   data), the state says why in `missing`; the ask route answers a question that
+//   needs that part with the reason (server/routes/ask.ts, NEEDS), and any other
+//   question without it, with the notice.
 // - parking age: the parking route keeps its last data when the feed fails, so a
 //   garage's own feed time can lag; garages more than 15 minutes behind the state's
 //   time are named in a notice, which goes into the question and the answer.
@@ -36,7 +39,7 @@ type Options = Parameters<CityStateProvider["current"]>[0] & { signal?: AbortSig
 // A CityState with an optional line about its data, which the ask route returns as
 // the answer's `notice`, and the reason the garages are missing, if they are.
 // CityState itself (server/city-state.ts) stays as it is.
-export type LiveCityState = CityState & { notice?: string; missing?: { parking?: string } }
+export type LiveCityState = CityState & { notice?: string; missing?: { parking?: string; bikes?: string } }
 export type LiveCityStateProvider = { current(options: Options): Promise<LiveCityState> }
 
 // An error whose message is fit for the browser (it names no path, host or key).
@@ -183,7 +186,11 @@ export function createLiveCityState(sources: LiveSources = {}): LiveCityStatePro
       const parking = parkingRead.ok ? parkingRead.value : null
       const missingParking =
         parking != null
-          ? null
+          ? parking.garages.length > 0
+            ? null
+            : options.mode === "recorded"
+              ? "The recorded parking snapshot lists no garages."
+              : "The parking feed listed no garages."
           : parkingRead.ok
             ? "There is no recorded parking data."
             : parkingRead.late
@@ -200,11 +207,19 @@ export function createLiveCityState(sources: LiveSources = {}): LiveCityStatePro
       if (oldParking != null) notices.push(oldParking)
 
       let stations: BikeStationState[] = []
+      let missingBikes: string | null = null
       const bikeData = bikeRead.ok ? bikeRead.value : null
       const feeds = bikeData?.feeds == null ? [] : Object.values(bikeData.feeds)
-      if (!bikeRead.ok && bikeRead.late) {
+      if (options.mode === "recorded") {
+        // The bikes route answers recorded mode with its committed sample, not with the
+        // stations at the recorded time: that is no data about this moment.
+        missingBikes = "There is no recorded bike data."
+        notices.push("Shared bikes left out: there is no recorded bike data.")
+      } else if (!bikeRead.ok && bikeRead.late) {
+        missingBikes = `The bike feeds did not answer within ${seconds}.`
         notices.push(`Shared bikes left out: the bike feeds did not answer within ${seconds}.`)
       } else if (bikeData == null || (feeds.length > 0 && feeds.every((f) => f === "missing"))) {
+        missingBikes = "The bike feeds did not answer."
         notices.push("Shared bikes left out: the bike feeds did not answer.")
       } else {
         const failed = bikeFeedNotice(bikeData.feeds)
@@ -221,7 +236,14 @@ export function createLiveCityState(sources: LiveSources = {}): LiveCityStatePro
         sectors: [...sectors],
         places: [...places],
         ...(notices.length === 0 ? {} : { notice: notices.join(" ") }),
-        ...(missingParking == null ? {} : { missing: { parking: missingParking } }),
+        ...(missingParking == null && missingBikes == null
+          ? {}
+          : {
+              missing: {
+                ...(missingParking == null ? {} : { parking: missingParking }),
+                ...(missingBikes == null ? {} : { bikes: missingBikes }),
+              },
+            }),
       }
     },
   }

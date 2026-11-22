@@ -117,7 +117,7 @@ const CIRCULATION =
 // The city state as text, distances measured from `from`.
 // A city state may carry a line about its data (a stale or failed feed, from
 // server/city-state-live.ts); the question then states it too, so the answer weighs it.
-type StateWithNotice = CityState & { notice?: string }
+type StateWithNotice = CityState & { notice?: string; missing?: LiveCityState["missing"] }
 
 function cityContext(state: StateWithNotice, from: { name: string } & LatLon): string {
   const garages = [...state.garages]
@@ -189,7 +189,12 @@ export function planAsk(question: AskQuestion, state: StateWithNotice): AskPlan 
               },
             ]),
       ]
-      if (options.length === 0) throw new AskError(409, "No garage has free places and no bike station has bikes.")
+      if (options.length === 0) {
+        // Without bike data that is not "no bike has bikes": say what is missing.
+        const bikesMissing = state.missing?.bikes
+        if (bikesMissing != null) throw new AskError(503, `No garage has free places, and ${bikesMissing.charAt(0).toLowerCase()}${bikesMissing.slice(1)}`)
+        throw new AskError(409, "No garage has free places and no bike station has bikes.")
+      }
       return {
         ask,
         question: text,
@@ -234,6 +239,10 @@ export function planAsk(question: AskQuestion, state: StateWithNotice): AskPlan 
     }
     case "busy": {
       const centre = state.garages.filter((g) => metres(g, ORIGIN) <= CENTRE_RADIUS_M)
+      // Judged from the centre's garages only: with none of them there is nothing to judge.
+      if (centre.length === 0) {
+        throw new AskError(503, `No garage within ${CENTRE_RADIUS_M / 1000} km of the Belfry is in the data: try again in a minute.`)
+      }
       const capacity = centre.reduce((n, g) => n + g.capacity, 0)
       const taken = centre.reduce((n, g) => n + g.capacity - g.available, 0)
       return {
@@ -447,10 +456,27 @@ export function sameOriginOrAllowed(req: Pick<IncomingMessage, "headers">, allow
   })
 }
 
-// A parking question and "is the centre busy" are about the garages: without them
-// there is nothing to answer from. The others are not.
-function needsGarages(question: AskQuestion): boolean {
-  return question.template === "park" || question.template === "busy"
+// The parts of the city state each question cannot be answered without. A parking
+// question offers garages (and a bike if there is data for one), "is the centre busy"
+// is judged from the garages, and a free question can be about anything in the state,
+// so it needs all of it. The circulation plan's sectors are always there (a constant).
+type Part = "parking" | "bikes"
+const NEEDS: Record<AskQuestion["template"], readonly Part[]> = {
+  park: ["parking"],
+  busy: ["parking"],
+  drive: [],
+  q: ["parking", "bikes"],
+}
+const PART_NAMES: Record<Part, string> = { parking: "the garages", bikes: "the bike stations" }
+
+// The error for a question whose data is missing, naming why, or null when it has
+// what it needs. It comes before any paid call, the cache and the recorded answers.
+export function missingFor(question: AskQuestion, missing: LiveCityState["missing"]): AskError | null {
+  const needs = NEEDS[question.template]
+  const reasons = needs.flatMap((part) => (missing?.[part] == null ? [] : [missing[part]]))
+  if (reasons.length === 0) return null
+  const what = needs.map((part) => PART_NAMES[part]).join(" and ")
+  return new AskError(503, `${reasons.join(" ")} This question needs ${what}: try again in a minute.`)
 }
 
 export function createAskRoute(
@@ -524,9 +550,8 @@ export function createAskRoute(
       // Any other error's message may name a file or host; only a CityStateError's is passed on.
       throw new AskError(502, error instanceof CityStateError ? error.message : "Could not read the city's data.")
     }
-    if (state.missing?.parking != null && needsGarages(question)) {
-      throw new AskError(503, `${state.missing.parking} This question needs the garages: try again in a minute.`)
-    }
+    const missing = missingFor(question, state.missing)
+    if (missing != null) throw missing
     const plan = planAsk(question, state)
     const key = recordingKey(plan.request)
     const notice = state.notice
