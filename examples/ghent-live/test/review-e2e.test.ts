@@ -181,10 +181,10 @@ test("an inbox line parses back into the message", () => {
 test("mesh processes get a minimal environment that cannot reach another mesh", () => {
   const caller = {
     PATH: "/usr/bin",
-    HOME: "/home/someone",
-    AGENT_MESH_HOME: "/home/someone/.agent-mesh",
+    HOME: "/srv/someone",
+    AGENT_MESH_HOME: "/srv/someone/.agent-mesh",
     AGENT_MESH_ID: "worker-1",
-    AGENT_MESH_SOCK: "/home/someone/.agent-mesh/daemon.sock",
+    AGENT_MESH_SOCK: "/srv/someone/.agent-mesh/daemon.sock",
     AGENT_MESH_REDIS_URL: "redis://127.0.0.1:6379",
     HERDR_PANE_ID: "w1:p1",
     CLAUDE_CODE_SESSION_ID: "abc",
@@ -197,10 +197,10 @@ test("mesh processes get a minimal environment that cannot reach another mesh", 
     AGENT_MESH_PREFIX: "glrabc",
     AGENT_MESH_HOSTNAME: "review-e2e",
     PATH: "/usr/bin",
-    HOME: "/home/someone",
+    HOME: "/srv/someone",
   })
   const app = appEnvironment(caller, { GHENT_LIVE_PORT: "41001" })
-  assert.deepEqual(app, { PATH: "/usr/bin", HOME: "/home/someone", GHENT_LIVE_PORT: "41001" })
+  assert.deepEqual(app, { PATH: "/usr/bin", HOME: "/srv/someone", GHENT_LIVE_PORT: "41001" })
 })
 
 test("insideDir accepts files under the directory and nothing else", () => {

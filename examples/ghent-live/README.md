@@ -94,9 +94,9 @@ Through a proxy such as `tailscale serve`, add the proxy's origin with a second
 `--origin`, and its host name to `GHENT_LIVE_ALLOWED_HOSTS`:
 
 ```bash
-pnpm overlay --port 4858 --origin http://127.0.0.1:5280 --origin https://<machine>.<tailnet>.ts.net \
+pnpm overlay --port 4858 --origin http://127.0.0.1:5280 --origin https://<your proxy host> \
   --target <reviewer agent id> --plan "$PWD/examples/ghent-live/plan/review-plan.json"
-GHENT_LIVE_OVERLAY=http://127.0.0.1:4858 GHENT_LIVE_ALLOWED_HOSTS=<machine>.<tailnet>.ts.net \
+GHENT_LIVE_OVERLAY=http://127.0.0.1:4858 GHENT_LIVE_ALLOWED_HOSTS=<your proxy host> \
   pnpm --dir examples/ghent-live dev
 ```
 
