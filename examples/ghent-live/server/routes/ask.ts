@@ -152,8 +152,8 @@ export function planAsk(question: AskQuestion, state: CityState): AskPlan {
           : [
               {
                 value: `bikes:${bike.b.operator}:${bike.b.id}`,
-                label: `Shared bike, ${bike.b.name}`,
-                detail: `${bike.b.available} ${bike.b.available === 1 ? "bike" : "bikes"} · ${distance(bike.m)} away`,
+                label: "Shared bike",
+                detail: `${bike.b.name}: ${bike.b.available} ${bike.b.available === 1 ? "bike" : "bikes"} · ${distance(bike.m)} away`,
               },
             ]),
       ]
@@ -235,6 +235,11 @@ export function planAsk(question: AskQuestion, state: CityState): AskPlan {
   }
 }
 
+// "Ramen" does not say it is a garage; the headline does: "Park at the Ramen garage".
+export function parkAt(garage: string): string {
+  return `Park at ${/^the /i.test(garage) ? "" : "the "}${garage} garage`
+}
+
 // Reads the Decisions API's answer the way the panel shows it.
 export function answerFrom(
   plan: AskPlan,
@@ -250,7 +255,7 @@ export function answerFrom(
       .sort((a, b) => b.probability - a.probability)
     const chosen = options.find((o) => o.value === answer.choice)
     if (chosen == null) throw new AskError(502, "The Decisions API chose an option that was not offered.")
-    const headline = chosen.value.startsWith("garage:") ? `Park at ${chosen.label}` : chosen.label
+    const headline = chosen.value.startsWith("garage:") ? parkAt(chosen.label) : "Take a shared bike"
     return { ...base, answer: headline, probability: chosen.probability, detail: chosen.detail, sel: chosen.value, options }
   }
   if (plan.kind === "predicate" && answer.type === "predicate") {

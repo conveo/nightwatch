@@ -1,6 +1,15 @@
-import { PLACES } from "../places.ts"
+import { PLACES, placeBySlug } from "../places.ts"
 import type { ViewState } from "../view-state.ts"
-import { formatAsk, parseAsk, questionText, MAX_FREE_QUESTION, type AskAnswer, type AskFailure } from "./templates.ts"
+import {
+  formatAsk,
+  parseAsk,
+  questionText,
+  titleCase,
+  MAX_FREE_QUESTION,
+  type AskAnswer,
+  type AskFailure,
+  type Names,
+} from "./templates.ts"
 import "./panel.css"
 
 export type AskContext = {
@@ -20,6 +29,16 @@ const SUGGESTIONS: string[] = [
   "busy:now",
   ...DRIVE_EXAMPLES.map((d) => `drive:${d}`),
 ]
+
+// The places are known here; sector names come from the server's city state, so until
+// the answer arrives a sector shows as its slug in title case ("Portus Ganda").
+const NAMES: Names = { place: (slug) => placeBySlug(slug)?.nl ?? null, sector: titleCase }
+const textOf = (ask: string) => {
+  const question = parseAsk(ask)
+  return question == null ? ask : questionText(question, NAMES)
+}
+// Typed text matches a suggestion whatever its case and final question mark.
+const key = (text: string) => text.trim().replace(/\s+/g, " ").replace(/\?$/, "").toLowerCase()
 
 const pct = (p: number) => `${Math.round(p * 100)}%`
 const dataTime = new Intl.DateTimeFormat("en-GB", {
@@ -41,11 +60,11 @@ function sourceLine(answer: AskAnswer): string {
   const when = `data of ${dataTime.format(new Date(answer.dataTime))}`
   switch (answer.source) {
     case "live":
-      return `Decisions API, ${answer.ms} ms · ${when}`
+      return `Live, ${answer.ms} ms · ${when}`
     case "recorded":
       return `Recorded answer · ${when}`
     case "cached":
-      return `Asked a moment ago · ${when}`
+      return `Cached answer · ${when}`
   }
 }
 
@@ -86,8 +105,8 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
   list.id = "ask-suggestions"
   const byText = new Map<string, string>()
   for (const ask of SUGGESTIONS) {
-    const text = questionText(parseAsk(ask)!)
-    byText.set(text.toLowerCase(), ask)
+    const text = textOf(ask)
+    byText.set(key(text), ask)
     const option = document.createElement("option")
     option.value = text
     list.append(option)
@@ -105,20 +124,22 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
   }
 
   function renderPending(ask: string): void {
-    const question = parseAsk(ask)
-    result.replaceChildren(
-      el("p", "ask-question", question == null ? ask : questionText(question)),
-      el("p", "ask-pending", "Asking…"),
-    )
+    result.replaceChildren(el("p", "ask-question", textOf(ask)), el("p", "ask-pending", "Asking…"))
     clear.hidden = false
   }
 
   function renderAnswer(answer: AskAnswer): void {
     const line = el("div", "ask-answer")
     line.append(el("span", "ask-headline", answer.answer), el("span", "ask-pct", pct(answer.probability)))
-    const nodes: HTMLElement[] = [el("p", "ask-question", answer.question), line, el("p", "ask-detail", answer.detail)]
+    // The other options with their probabilities open from the answer itself: on a
+    // projector the answer reads best on its own.
     const others = answer.options.filter((o) => o.value !== answer.sel)
+    let shownAnswer: HTMLElement = line
     if (others.length > 0) {
+      const more = el("details", "ask-more")
+      const summary = el("summary", "ask-more-summary")
+      summary.title = "Show the other options"
+      summary.append(line)
       const ol = el("ol", "ask-options")
       for (const option of others) {
         const li = el("li", "ask-option")
@@ -126,17 +147,21 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
         li.append(el("span", "ask-option-label", option.label), el("span", "ask-option-pct", pct(option.probability)))
         ol.append(li)
       }
-      nodes.push(ol)
+      more.append(summary, ol)
+      shownAnswer = more
     }
-    nodes.push(el("p", "ask-meta", sourceLine(answer)))
-    result.replaceChildren(...nodes)
+    result.replaceChildren(
+      el("p", "ask-question", answer.question),
+      shownAnswer,
+      el("p", "ask-detail", answer.detail),
+      el("p", "ask-meta", sourceLine(answer)),
+    )
     clear.hidden = false
   }
 
   function renderFailure(ask: string, failure: AskFailure): void {
-    const question = parseAsk(ask)
     result.replaceChildren(
-      el("p", "ask-question", failure.question ?? (question == null ? ask : questionText(question))),
+      el("p", "ask-question", failure.question ?? textOf(ask)),
       el("p", "ask-error", `No answer: ${failure.error}`),
     )
     clear.hidden = false
@@ -197,7 +222,7 @@ export function mountAskPanel(root: HTMLElement, ctx: AskContext): Promise<void>
     event.preventDefault()
     const text = input.value.trim().replace(/\s+/g, " ")
     if (text === "") return
-    const template = byText.get(text.toLowerCase())
+    const template = byText.get(key(text))
     const raw = template ?? formatAsk({ template: "q", text })
     input.value = ""
     input.blur()

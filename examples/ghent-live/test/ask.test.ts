@@ -10,7 +10,7 @@ import { loadRoutes, routesMiddleware, type Route } from "../server/api.ts"
 import type { CityState } from "../server/city-state.ts"
 import { FIXTURE_CITY_STATE } from "../server/city-state-fixture.ts"
 import { recordingKey, type DecisionRequest, type DecisionResponse } from "../server/decisions.ts"
-import { AskError, createAskRoute, planAsk, readRecordings } from "../server/routes/ask.ts"
+import { AskError, createAskRoute, parkAt, planAsk, readRecordings } from "../server/routes/ask.ts"
 
 const noKey = () => undefined
 
@@ -117,7 +117,9 @@ test("without a key, the template questions answer from the recordings (replay)"
   assert.equal(park.source, "recorded")
   assert.equal(park.kind, "choice")
   assert.match(park.sel ?? "", /^garage:/)
-  assert.equal(park.answer, `Park at ${park.options[0]!.label}`)
+  assert.equal(park.answer, parkAt(park.options[0]!.label))
+  assert.equal(parkAt("Ramen"), "Park at the Ramen garage")
+  assert.equal(parkAt("The Loop"), "Park at The Loop garage")
   assert.ok(park.probability > 0 && park.probability <= 1)
   assert.equal(park.dataTime, FIXTURE_CITY_STATE.time)
 
