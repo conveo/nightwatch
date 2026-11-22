@@ -1,0 +1,25 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "bike_bars",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "bars_along_streets",
+      "probability": 0.95
+    },
+    {
+      "type": "predicate",
+      "name": "bar_heights",
+      "probability": 0.95
+    },
+    {
+      "type": "predicate",
+      "name": "bars_thin",
+      "probability": 0.95
+    }
+  ]
+}
