@@ -342,51 +342,62 @@ function inAny(p: XZ, polygons: readonly Bounded[]): boolean {
   )
 }
 
-// The edges of `polygons` that need a vertical face: those with `outside(p)` true on
-// exactly one side (water on one side, land on the other), never the area's border.
-function sideEdges(polygons: readonly Polygon[], rect: Rect, wanted: (left: boolean, right: boolean) => boolean): Array<[XZ, XZ]> {
+// Every ring edge of the polygons, except very short ones and those on the area's border.
+function polygonEdges(polygons: readonly Polygon[], rect: Rect): Array<[XZ, XZ]> {
   const edges: Array<[XZ, XZ]> = []
-  const water = bounded(polygons)
   for (const polygon of polygons) {
     for (const ring of polygon) {
       for (let i = 0; i < ring.length; i++) {
         const a = ring[i]!
         const b = ring[(i + 1) % ring.length]!
-        const len = Math.hypot(b[0] - a[0], b[1] - a[1])
-        if (len < 0.05 || onRectEdge(a, b, rect)) continue
-        // Half a metre to each side of the edge's middle.
-        const mx = (a[0] + b[0]) / 2
-        const mz = (a[1] + b[1]) / 2
-        const nx = (-(b[1] - a[1]) / len) * 0.5
-        const nz = ((b[0] - a[0]) / len) * 0.5
-        if (wanted(inAny([mx + nx, mz + nz], water), inAny([mx - nx, mz - nz], water))) edges.push([a, b])
+        if (Math.hypot(b[0] - a[0], b[1] - a[1]) >= 0.05 && !onRectEdge(a, b, rect)) edges.push([a, b])
       }
     }
   }
   return edges
+}
+
+// Walls are decided along each edge in steps of this length (metres), so an edge that
+// is only partly over the water, or only partly a bank, gets a wall on that part.
+const STEP_M = 0.5
+
+// The parts of the edge a -> b where `keep` holds at the middle of each step, one edge
+// per run of steps. `normal` is the edge's unit normal. With `widen`, each run grows by
+// a step at both ends (within a and b), so it reaches the boundary it was cut at.
+export function edgeRuns(a: XZ, b: XZ, keep: (p: XZ, normal: XZ) => boolean, widen = false): Array<[XZ, XZ]> {
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1])
+  if (len === 0) return []
+  const steps = Math.max(1, Math.ceil(len / STEP_M))
+  const normal: XZ = [-(b[1] - a[1]) / len, (b[0] - a[0]) / len]
+  const at = (i: number): XZ => (i >= steps ? b : [a[0] + ((b[0] - a[0]) * i) / steps, a[1] + ((b[1] - a[1]) * i) / steps])
+  const runs: Array<[XZ, XZ]> = []
+  let start = -1
+  for (let i = 0; i <= steps; i++) {
+    const kept = i < steps && keep(at(i + 0.5), normal)
+    if (kept && start < 0) start = i
+    if (!kept && start >= 0) {
+      runs.push(widen ? [at(Math.max(0, start - 1)), at(Math.min(steps, i + 1))] : [at(start), at(i)])
+      start = -1
+    }
+  }
+  return runs
 }
 
 // Quay walls: the water's edges where land meets it, skipping the seams between two
-// water polygons and the area's border.
+// water polygons (water on both sides) and the area's border.
 export function quayEdges(water: readonly Polygon[], rect: Rect): Array<[XZ, XZ]> {
-  return sideEdges(water, rect, (left, right) => left !== right)
+  const wet = bounded(water)
+  // Half a metre to each side of the edge.
+  const bank = (p: XZ, n: XZ) => inAny([p[0] + n[0] * 0.5, p[1] + n[1] * 0.5], wet) !== inAny([p[0] - n[0] * 0.5, p[1] - n[1] * 0.5], wet)
+  return polygonEdges(water, rect).flatMap(([a, b]) => edgeRuns(a, b, bank))
 }
 
-// A bridge's sides: the edges of a bridge deck that lie over the water.
+// A bridge's sides: the parts of a bridge deck's edges that lie over the water. Runs
+// are widened, so a side reaches the bank; the extra step is under the street-level
+// ground, where it does not show.
 export function bridgeEdges(bridges: readonly Polygon[], water: readonly Polygon[], rect: Rect): Array<[XZ, XZ]> {
   const wet = bounded(water)
-  const edges: Array<[XZ, XZ]> = []
-  for (const polygon of bridges) {
-    for (const ring of polygon) {
-      for (let i = 0; i < ring.length; i++) {
-        const a = ring[i]!
-        const b = ring[(i + 1) % ring.length]!
-        if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.05 || onRectEdge(a, b, rect)) continue
-        if (inAny([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], wet)) edges.push([a, b])
-      }
-    }
-  }
-  return edges
+  return polygonEdges(bridges, rect).flatMap(([a, b]) => edgeRuns(a, b, (p) => inAny(p, wet), true))
 }
 
 // Vertical quads from `top` down to `bottom` along each edge.

@@ -8,6 +8,7 @@ import {
   bridgeEdges,
   clipRing,
   decodeRing,
+  edgeRuns,
   encodeRing,
   parseGroundFile,
   pointInPolygon,
@@ -130,12 +131,49 @@ test("quay walls line the water, not the seam between two water polygons or the 
   assert.equal(quayEdges([[clipRing(square(0, -10, 20), rect)]], rect).length, 3)
 })
 
-test("a bridge gets sides only where it crosses the water", () => {
+test("a quay edge that is partly a seam gets a wall only along the bank", () => {
+  // B borders the lower half of A's east side; the upper half is a bank.
+  const a: Polygon = [square(0, 0, 20)]
+  const b: Polygon = [[[20, 0], [30, 0], [30, 10], [20, 10]]]
+  const east = quayEdges([a, b], BIG).filter(([p, q]) => p[0] === 20 && q[0] === 20)
+  assert.equal(east.length, 1)
+  const [from, to] = east[0]!
+  assert.ok(near(Math.min(from[1], to[1]), 10, 0.5) && near(Math.max(from[1], to[1]), 20), `${from} -> ${to}`)
+})
+
+test("a bridge gets sides only where it crosses the water, reaching both banks", () => {
   const river: Polygon = [[[0, -100], [20, -100], [20, 100], [0, 100]]]
   const bridge: Polygon = [[[-10, -5], [30, -5], [30, 5], [-10, 5]]]
   const edges = bridgeEdges([bridge], [river], BIG)
   assert.equal(edges.length, 2)
-  for (const [a, b] of edges) assert.equal(a[1], b[1])
+  for (const [a, b] of edges) {
+    assert.equal(a[1], b[1])
+    const [lo, hi] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])]
+    assert.ok(lo <= 0 && lo >= -1 && hi >= 20 && hi <= 21, `${lo} .. ${hi}`)
+  }
+})
+
+test("a bridge edge with a dry middle still gets a side where it crosses the water", () => {
+  // The edge runs from x = -5 to x = 100; the river is x = 0..20, so the middle is dry.
+  const river: Polygon = [[[0, -100], [20, -100], [20, 100], [0, 100]]]
+  const bridge: Polygon = [[[-5, -5], [100, -5], [100, 5], [-5, 5]]]
+  const edges = bridgeEdges([bridge], [river], BIG)
+  assert.equal(edges.length, 2)
+  for (const [a, b] of edges) assert.ok(Math.min(a[0], b[0]) <= 0 && Math.max(a[0], b[0]) >= 20)
+})
+
+test("an edge splits into the runs where the test holds", () => {
+  const wet = (p: XZ) => (p[0] > 2 && p[0] < 4) || p[0] > 8
+  assert.deepEqual(edgeRuns([0, 0], [10, 0], wet), [
+    [[2, 0], [4, 0]],
+    [[8, 0], [10, 0]],
+  ])
+  assert.deepEqual(edgeRuns([0, 0], [10, 0], wet, true), [
+    [[1.5, 0], [4.5, 0]],
+    [[7.5, 0], [10, 0]],
+  ])
+  assert.deepEqual(edgeRuns([0, 0], [10, 0], () => false), [])
+  assert.deepEqual(edgeRuns([0, 0], [0, 0], () => true), [])
 })
 
 test("rings round-trip through the fixture's flat encoding at 0.1 m", () => {
