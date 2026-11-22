@@ -1,0 +1,30 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "zones_surround_centre",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "distinct_middle_zone",
+      "probability": 0.99
+    },
+    {
+      "type": "predicate",
+      "name": "red_posts_on_borders",
+      "probability": 0.94
+    },
+    {
+      "type": "predicate",
+      "name": "neighbours_differ",
+      "probability": 0.94
+    },
+    {
+      "type": "predicate",
+      "name": "zone_names",
+      "probability": 1
+    }
+  ]
+}
