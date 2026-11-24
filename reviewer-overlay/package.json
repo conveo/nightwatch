@@ -23,7 +23,7 @@
     "e2e": "bash e2e/run.sh"
   },
   "dependencies": {
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
