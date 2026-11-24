@@ -168,8 +168,8 @@ spawn prompt, the orchestrator's included:
   (see "Checks judged by a model" in Phase 5).
 - **The repository is public** (when it is): no host names, home paths, keys,
   internal agent ids or customer names in commits, PR text or comments. Tell
-  workers the exact pattern the gate scans for; it also matches placeholders such
-  as an example proxy host or `/home/someone` in a test.
+  workers the exact pattern the gate scans for; it also matches placeholders, such
+  as an example proxy host name or a made-up home directory in a test.
 - **Push first.** Commit and push before anything risky and at every milestone,
   with the HTTPS fallback for a failing SSH push
   (`git -c credential.helper='!gh auth git-credential' push https://github.com/<owner>/<repo>.git HEAD:refs/heads/<branch>`).
@@ -307,8 +307,10 @@ executes to the gate. The ticket is already in the spawn prompt, so the go carri
 no new scope.
 
 **A worker cap is a count of live agents.** When the Captain caps the fleet, spawn
-only with the agreed memory free, and when a ticket is gated retire its mesh actor
-(`teardown.sh <id>`) and end its agent before starting the next one. Keep the pane
+only with the agreed memory free. A slot is free when the ticket is gated by the
+orchestrator's own checks and its head is merged into the integration branch (the
+same step, minutes apart): then retire its mesh actor (`teardown.sh <id>`) and end
+its agent before starting the next one, not earlier. Keep the pane
 and the worktree: a follow-up (a batch-review finding in that ticket's code) is
 then `claude --continue` in the same pane on a new branch, with a new actor id,
 and the agent still knows the code it wrote.
@@ -619,8 +621,9 @@ Leave the mesh and the hosts as clean as you found them:
   It lists leftover dev servers and Docker containers (set
   `AGENT_MESH_TEARDOWN_CONTAINERS` to a regex for your per-worktree containers).
 - **Retirement is one-way.** A retired id is reserved: the mesh refuses to register
-  it again. Retire a worker only when its ticket is gated and merged, and give a
-  follow-up in the same worktree a new actor id. If panes are later restored with
+  it again. Retire a worker only when its ticket is gated and merged into the
+  integration branch (the rule in Phase 3), and give a follow-up in the same
+  worktree a new actor id. If panes are later restored with
   their agents (a client attach or a reboot can relaunch every agent with
   `--resume`), the roster will show the retired ids `offline` beside running
   panes; end those sessions or register them under new ids, and say which.
