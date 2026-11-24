@@ -310,7 +310,9 @@ no new scope.
 only with the agreed memory free. A slot is free when the ticket is gated by the
 orchestrator's own checks and its head is merged into the integration branch (the
 same step, minutes apart): then retire its mesh actor (`teardown.sh <id>`) and end
-its agent before starting the next one, not earlier. Keep the pane
+its agent before starting the next one, not earlier. The retired id stays on the
+roster as an `offline` row and cannot register again (Phase 8), so when the roster
+itself will be shown, agree this with the Captain before the run. Keep the pane
 and the worktree: a follow-up (a batch-review finding in that ticket's code) is
 then `claude --continue` in the same pane on a new branch, with a new actor id,
 and the agent still knows the code it wrote.
@@ -626,7 +628,15 @@ Leave the mesh and the hosts as clean as you found them:
   worktree a new actor id. If panes are later restored with
   their agents (a client attach or a reboot can relaunch every agent with
   `--resume`), the roster will show the retired ids `offline` beside running
-  panes; end those sessions or register them under new ids, and say which.
+  panes. Ask the Captain which of three he wants before you act. Ending those
+  sessions leaves the roster as it is. Registering them under new ids doubles the
+  rows, and the new ids start with no history; a run tried this and the Captain
+  did not want it. Bringing a retired id back is not a mesh command: `register`,
+  `rebind` and `unregister` all refuse an id that holds a claim. It takes an
+  operator recovery in the broker (release the retired claim and drop the
+  offline roster row; the inbox stays, so nothing is replayed), and the Captain
+  runs or approves that himself. Prepare the script and a backup and hand him the
+  command; do not edit the broker on your own.
 - **Stay registered for long-lived ids.** A `stale` id is fine; unregistering
   deletes its inbox and frees the name on an unauthenticated broker.
 - Delete the run's workspaces, panes and terminals, filtered to the **exact
