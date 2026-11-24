@@ -1,0 +1,10 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "yes_no",
+      "probability": 1
+    }
+  ]
+}

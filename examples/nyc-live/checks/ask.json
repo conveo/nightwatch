@@ -1,0 +1,24 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan centred on 598 Broadway, rendered in a web browser, with an 'Ask the city' panel that answers questions about the city.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "ask_panel",
+      "instructions": "A panel on the right shows a question and an answer with a percentage.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "route_answer",
+      "instructions": "The panel's question asks for the fastest way to a place, and its answer names a subway line, Citi Bike or walking.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "instructions": "How readable is the on-screen text when projected for an audience of 100 people?",
+      "levels": [{ "label": "poor" }, { "label": "acceptable" }, { "label": "good" }],
+      "minLevel": "acceptable"
+    }
+  ]
+}

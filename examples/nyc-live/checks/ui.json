@@ -1,0 +1,48 @@
+{
+  "context": "A screenshot of nyc-live, a 3D map of lower Manhattan rendered in a web browser and projected for an audience. A toolbar at the bottom holds the camera presets, a day/night switch and the layer toggles; place names are drawn as labels over the map.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "preset_buttons",
+      "instructions": "The toolbar shows five camera preset buttons labelled Venue, Battery, Brooklyn Bridge, From above and Street level.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "one_preset_active",
+      "instructions": "Exactly one of the camera preset buttons is highlighted as the active one, in a colour the other preset buttons do not have.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "layer_toggles_and_light",
+      "instructions": "The toolbar has on/off toggles for map layers (such as Buildings and Subway) and a switch between Day and Night.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "place_labels",
+      "instructions": "Text labels naming places, such as neighbourhoods, landmarks or the venue '598 Broadway', are drawn over the map.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "labels_apart",
+      "instructions": "No place label overlaps another place label.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "labels_clear_of_toolbar",
+      "instructions": "No place label covers the toolbar.",
+      "min": 0.8
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "instructions": "The on-screen text is readable from the back of a room: how readable is it when projected for an audience of 100 people?",
+      "levels": [{ "label": "poor" }, { "label": "acceptable" }, { "label": "good" }],
+      "minLevel": "acceptable"
+    }
+  ]
+}

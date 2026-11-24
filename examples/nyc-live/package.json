@@ -20,6 +20,7 @@
     "check:visual": "node scripts/check-visual.ts"
   },
   "dependencies": {
+    "gtfs-realtime-bindings": "2.2.0",
     "three": "0.186.1"
   },
   "devDependencies": {

@@ -1,0 +1,161 @@
+/* "Ask the city", top right. Text is sized for a projector: 24px and up. The
+   selectors carry the class too, so they win over style.css, which loads later. */
+
+#ask.ask-panel {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  line-height: 1.25;
+}
+
+.ask-panel .ask-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ask-panel h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.ask-panel .ask-source {
+  font-size: 24px;
+  color: var(--muted);
+}
+
+.ask-panel .ask-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ask-panel .ask-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ask-panel select,
+.ask-panel input,
+.ask-panel button {
+  min-height: 48px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+  font: inherit;
+  font-size: 24px;
+}
+
+.ask-panel .ask-row > select,
+.ask-panel .ask-row > input {
+  flex: 1;
+}
+
+.ask-panel [hidden] {
+  display: none;
+}
+
+.ask-panel button {
+  padding: 6px 18px;
+  background: #2f6fed;
+  border-color: #2f6fed;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ask-panel button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.ask-panel .ask-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.ask-panel .ask-result[hidden] {
+  display: none;
+}
+
+.ask-panel .ask-question {
+  margin: 0;
+  font-size: 24px;
+  color: var(--muted);
+}
+
+.ask-panel .ask-answer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.ask-panel .ask-answer-text {
+  flex: 1;
+}
+
+.ask-panel .ask-pct {
+  font-variant-numeric: tabular-nums;
+  color: #7cc4ff;
+}
+
+.ask-panel .ask-bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.ask-panel .ask-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.ask-panel .ask-bar > div {
+  height: 100%;
+  background: #7cc4ff;
+}
+
+.ask-panel .ask-others {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 24px;
+  color: var(--muted);
+}
+
+.ask-panel .ask-others li {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-panel .ask-status {
+  margin: 0;
+  font-size: 24px;
+  color: var(--muted);
+}
+
+.ask-panel .ask-status:empty {
+  display: none;
+}

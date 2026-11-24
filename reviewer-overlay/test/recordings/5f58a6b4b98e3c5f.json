@@ -1,0 +1,39 @@
+{
+  "model": "gpt-6-luna",
+  "look": "b83ef702ac4041e069493c2c6e60e38825159c2018fd4bfdf56d2830d2a137f5",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "launcher_mesh_mark",
+      "probability": 0.98
+    },
+    {
+      "type": "score",
+      "name": "panel_matches_reference",
+      "score": 1.94,
+      "probabilities": [
+        {
+          "value": 0,
+          "label": "different",
+          "probability": 0
+        },
+        {
+          "value": 1,
+          "label": "loosely similar",
+          "probability": 0.06
+        },
+        {
+          "value": 2,
+          "label": "close",
+          "probability": 0.94
+        },
+        {
+          "value": 3,
+          "label": "very close",
+          "probability": 0
+        }
+      ],
+      "confidence": 0.94
+    }
+  ]
+}

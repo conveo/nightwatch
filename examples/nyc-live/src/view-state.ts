@@ -1,9 +1,9 @@
 // Everything needed to reproduce what a person sees lives in the URL hash, so a
 // reviewer-overlay note (which carries the page URL) lets an agent open the exact
-// view again: camera, target, selection, data mode, data time, visible layers and
-// day or night lighting.
+// view again: camera, target, selection, data mode, data time, visible layers, day
+// or night lighting, and the question asked in the "ask the city" panel.
 //
-//   #cam=120,380,520&tgt=0,0,0&sel=bin:1007945&mode=recorded&t=2026-10-21T23:10:00Z&layers=buildings,subway&light=night
+//   #cam=120,380,520&tgt=0,0,0&sel=bin:1007945&mode=recorded&t=2026-10-21T23:10:00Z&layers=buildings,subway&light=night&ask=route:brooklyn-bridge
 
 export type DataMode = "fixture" | "recorded" | "live"
 export type Light = "day" | "night"
@@ -17,6 +17,8 @@ export type ViewState = {
   t: string | null
   layers: string[] | null
   light: Light
+  // The panel's question as "<template>:<value>" (src/ask/ask-param.ts), or null.
+  ask: string | null
 }
 
 export const DEFAULT_VIEW: ViewState = {
@@ -27,6 +29,7 @@ export const DEFAULT_VIEW: ViewState = {
   t: null,
   layers: null,
   light: "day",
+  ask: null,
 }
 
 const MODES: readonly DataMode[] = ["fixture", "recorded", "live"]
@@ -58,6 +61,7 @@ export function parseViewState(hash: string): ViewState {
     // No `layers` parameter shows every layer; `layers=` (empty) shows none.
     layers: layers == null ? null : layers.split(",").filter((l) => l !== ""),
     light: params.get("light") === "night" ? "night" : "day",
+    ask: params.get("ask") || null,
   }
 }
 
@@ -70,6 +74,7 @@ export function serializeViewState(state: ViewState): string {
   if (state.t != null) params.set("t", state.t)
   if (state.layers != null) params.set("layers", state.layers.join(","))
   if (state.light === "night") params.set("light", "night")
+  if (state.ask != null) params.set("ask", state.ask)
   // URLSearchParams encodes "," and ":"; keep the hash readable in a note.
   return "#" + params.toString().replaceAll("%2C", ",").replaceAll("%3A", ":")
 }

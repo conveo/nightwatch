@@ -18,6 +18,13 @@ It has two parts:
 browser (your app + overlay) --POST--> local server --agent-mesh publish--> agent inbox
 ```
 
+![The overlay in comment mode over a 3D map: the tool bar at the top, a numbered pin with its note, and the test plan in the sidebar](docs/comment-mode.png)
+
+<img src="docs/launcher.png" alt="The closed overlay: a round button with the animated agent-mesh mark" width="120" align="right">
+
+Closed, the overlay is one round button in the bottom-right corner, carrying the
+animated [agent-mesh](../agent-mesh) mark. It opens the sidebar with the test plan.
+
 ## Requirements
 
 - Node 22.18 or newer (the server runs its TypeScript source directly).

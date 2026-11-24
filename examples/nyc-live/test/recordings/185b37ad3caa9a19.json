@@ -1,0 +1,38 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "ask_panel",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "route_answer",
+      "probability": 1
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "score": 0.95,
+      "probabilities": [
+        {
+          "value": 0,
+          "label": "poor",
+          "probability": 0.08
+        },
+        {
+          "value": 1,
+          "label": "acceptable",
+          "probability": 0.89
+        },
+        {
+          "value": 2,
+          "label": "good",
+          "probability": 0.03
+        }
+      ],
+      "confidence": 0.84
+    }
+  ]
+}
