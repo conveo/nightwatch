@@ -95,6 +95,25 @@ on the box hosting the server, before `agent start`. An omitted or wrong
   KEY=VALUE ... --no-focus`) — `pane split` takes `--env`, so this closes the
   `worktree create` gap above in the same move.
 
+- **`herdr worktree create` sets the new branch's upstream to its base**
+  (`origin/main`). Unset it (`git branch --unset-upstream`) or push with an explicit
+  refspec (`git push origin <branch>:<branch>`), on the integration branch above
+  all.
+- **A named session may need starting.** On Herdr 0.9.1 a run found that
+  `herdr --session <name> <subcommand>` did not create a missing session; start it
+  headless first (`herdr --session <name> server`), then check `herdr session list`.
+- **Agent arguments go after `--`**, model included:
+  `herdr agent start <name> --kind claude --pane <id> -- --dangerously-skip-permissions --model <model>`.
+  Check the flags on the process (`pane process-info`,
+  `.result.process_info.foreground_processes[]`).
+- **A restored session relaunches its agents.** After a host reboot, and when a
+  client attaches to a session whose agent panes had ended, Herdr can start each
+  pane's last agent command again with `--resume`, in a fresh shell without the
+  environment you exported and without the agent's name. Expect retired workers
+  to come back as unnamed idle agents, and check `agent list` after any attach.
+- **End an agent with `herdr agent prompt <name> "/exit"`**, then check its PID is
+  gone; the pane returns to its shell and can host `claude --continue` later.
+
 Smaller ones:
 - Keep `wait-output --regex` **specific**. A generic alternation like
   `error|Cannot` matches unrelated oh-my-zsh plugin warnings on shell startup;

@@ -133,6 +133,51 @@ Devin workers fail the same way (a session parked on a question reports as
 running or blocked, not finished). `references/devin.md` has the Devin wording of
 the clause; use that one there.
 
+## The other rules every spawn prompt carries
+
+The anti-blocking clause is not the only thing a worker must be told up front. Each
+of these cost a round, or a night, in a run that left it out. Put them in every
+spawn prompt, the orchestrator's included:
+
+- **Contracts first.** Paste the plan's table of values that cross ticket
+  boundaries (selection ids, URL formats, slug rules) and the ticket's file budget
+  into the prompt. When a ticket discovers the real values (the data's own names
+  and slugs), it sends them to the orchestrator, who forwards them to every reader
+  and corrects the table. A worker that learns a format after it has gated pays a
+  round.
+- **The gate includes every check.** On a public repository code scanning runs on
+  every PR into the default branch: every check green *and* 0 open code-scanning
+  alerts on the PR. CI can be green while an alert is open.
+- **Ask the review bot again** after every push (see Phase 5), and spell out the
+  reply, resolve and re-request steps.
+- **Re-run a flaky job once.** Name the known flaky tests. One
+  `gh run rerun <run-id> --failed` before investigating a failure outside the
+  ticket's folder; a second failure is a blocker. Never edit the mesh to make its
+  tests pass.
+- **Stop processes by PID or port only.** Never `pkill -f` or `killall`: every
+  worker runs the same commands as the same user, so a pattern stops every worker's
+  dev server on the box. Save the PID when you start something. If the PID you
+  saved was a wrapper's, find the listener (`ss -ltnp`), check its working
+  directory is yours, and stop that PID.
+- **Count files before every push**, against the ticket's budget. A review bot
+  that stops at a file limit (Greptile: 100) makes the master PR's file count a
+  hard constraint; the orchestrator keeps the running total.
+- **Never lower a bar.** A failing check is fixed in the app. Nobody edits a
+  check's threshold or its wording to make it pass, and nobody documents a failure
+  away. If a check looks wrong, the worker asks the orchestrator with measurements
+  (see "Checks judged by a model" in Phase 5).
+- **The repository is public** (when it is): no host names, home paths, keys,
+  internal agent ids or customer names in commits, PR text or comments. Tell
+  workers the exact pattern the gate scans for; it also matches placeholders, such
+  as an example proxy host name or a made-up home directory in a test.
+- **Push first.** Commit and push before anything risky and at every milestone,
+  with the HTTPS fallback for a failing SSH push
+  (`git -c credential.helper='!gh auth git-credential' push https://github.com/<owner>/<repo>.git HEAD:refs/heads/<branch>`).
+- **The receipt command, spelled out.** `agent-mesh receive --id <id> --generation
+  <g>`, then `agent-mesh receipt --id <id> --generation <g> --token <batch token>`.
+  A worker that only reads its inbox leaves the batch unacknowledged and fails
+  preflight.
+
 ## Phase 1 — Plan (afternoon)
 
 Fan out read-only exploration agents to map the code. Shape the work into tickets
@@ -251,6 +296,32 @@ this mode, report a launch blocker. See `SECURITY.md` in the repository and
 → **Herdr**: [`references/herdr.md`](references/herdr.md) § Phase 3, including the
 SSH login-shell trap and the `--session nightwatch` convention.
 
+**Worker handshake, then the go.** Preflight needs a receipt from the last five
+minutes and an idle target, so a worker cannot register and start building in one
+turn. Use three short turns: (1) the worker registers with an explicit run-scoped
+id (never the derived one, which contains the machine name), publishes its first
+status and a note to itself, and ends the turn; (2) the daemon wakes it, it runs
+`receive` and `receipt` and ends the turn; (3) the orchestrator runs `preflight.sh`
+for it while it is idle and sends a `request` `{"go":true}`, which the worker
+executes to the gate. The ticket is already in the spawn prompt, so the go carries
+no new scope.
+
+**A worker cap is a count of live agents.** When the Captain caps the fleet, spawn
+only with the agreed memory free. A slot is free when the ticket is gated by the
+orchestrator's own checks and its head is merged into the integration branch (the
+same step, minutes apart): then retire its mesh actor (`teardown.sh <id>`) and end
+its agent before starting the next one, not earlier. The retired id stays on the
+roster as an `offline` row and cannot register again (Phase 8), so when the roster
+itself will be shown, agree this with the Captain before the run. Keep the pane
+and the worktree: a follow-up (a batch-review finding in that ticket's code) is
+then `claude --continue` in the same pane on a new branch, with a new actor id,
+and the agent still knows the code it wrote.
+
+**Pre-seed folder trust once.** The run's worktree paths are known in advance
+(`nw-<scope>-t<N>-<slug>`): set `hasTrustDialogAccepted` for all of them in one
+read-modify-write of `~/.claude.json` before the first spawn, with a backup,
+instead of one write per spawn.
+
 Hand the orchestrator the plan, the ticket bodies, and the run's notes on known
 failure modes. Make it register, verify receive-and-reply and its clock, then
 **stand by for an explicit greenlight** (it must not build before the plan is
@@ -361,6 +432,83 @@ Gate **every** PR. Merge-ready means ALL of:
 - scope within the run's change policy: areas the Captain excluded (for example
   schema, auth, billing) touched only where the plan says so, and no production
   change (data edits, reruns, production jobs), which stays with an engineer.
+- **0 open code-scanning alerts** on the PR, and the file count within the ticket's
+  budget.
+
+**Verify every gate yourself.** A worker's "gated" is a claim. Run one script per
+PR that checks all of the above on the current head (checks, the bot's score and
+its reviewed commit, unresolved threads, comments outside the diff, code-scanning
+alerts, conflicts, the hygiene scan of the title, the author's part of the body
+and the added lines, the file count), log its output, then read the PR's
+"Deviations" section yourself. Smoke-test that script, and every other gate tool,
+on the default branch before the first PR needs it: a tool written for the run is
+untested until it has run once on the box.
+
+**Re-run visual checks live.** When CI replays the answers a worker recorded for a
+screenshot it committed, a green replay proves the PNG passed, not that the code at
+the PR head draws it. Render the head yourself in a throwaway worktree, take a
+fresh screenshot of the check file's view, and ask the judge with the key. For
+that, every check file carries the view (the URL hash) its screenshot was taken
+with; a file used on several views lists them in the PR body. Audit the bars in the
+same step (every predicate at 0.8 or more, no score that accepts its lowest level,
+a negative control stated as an absence).
+
+**A screenshot that needs another ticket's layer** (a street view that needs the
+buildings, lights that need towers) is taken on a merge the worker never pushes:
+a scratch worktree, `git merge --no-commit` of the other branch, screenshot,
+record, copy only the PNG and its recording back. The worker's PR keeps targeting
+the default branch with its own files. Re-render the same merge yourself without a
+worktree: `git merge-tree --write-tree <a> <b>`, `git commit-tree`, and a local ref
+(`refs/nw-tmp/...`) that is never pushed.
+
+**Sweep the integrated branch early, and after every merge.** Per-ticket gates do
+not add up. In one run all nine tickets passed their own live checks and CI was
+green on every PR, while the same checks rendered from the integration branch
+failed five of sixteen: one ticket's labels crowded another's tower, opaque zones
+covered the river, buildings hid the bike bars. Run every check file against the
+integration branch as soon as a few tickets are merged, and hand the integration
+ticket the failures with their numbers.
+
+**Checks judged by a model.** Three things to know before a worker asks:
+- A check's context must not presuppose the claim. A context that described what
+  the claim asserts raised a failing check to 96%, and to 86% on a scene with
+  nothing drawn. Keep contexts neutral (where the camera stands, not what it
+  sees), and ask for a negative control when a check is new or changed: a
+  screenshot on which it must fail.
+- A context that describes a ticket's isolated branch ("buildings are not drawn
+  here") becomes false after integration. Write contexts that stay true.
+- A judge can reject a compound sentence whose every part it accepts. When the app
+  shows what the sentence says and the parts score high, time-box the attempts in
+  the app, then report the claim as open, with the decomposition as evidence, on
+  the master PR. Do not reword a plan criterion at night.
+
+**Steer a busy worker twice.** Mesh delivery waits for an idle pane, so a decision
+for a working agent goes out as a mesh message *and* as a short manager prompt
+(`herdr agent prompt <name> "<text>"`). On a tick, a worker with many changed
+files and no commit gets one "push first" nudge. While you are in a turn nothing
+is delivered to you either: read ahead with `agent-mesh inbox --peek`, and end the
+turn to receive.
+
+**After a restart or a reboot, check delivery before anything else.** When an
+agent's process is replaced (a resume, a host reboot, a manager restoring its
+session), the roster can still show it `online` while `agent-mesh delivery` says
+`owner-changed`: the binding names the old process and nothing is delivered. Rebind
+with the current generation (`agent-mesh rebind --id <id> --role <role>
+--generation <generation> --dedicated`, plus `--tick 15` for an orchestrator;
+`rebind` takes no `--deliver`), acknowledging a submitted batch first, and prove a
+receipt again. A reboot also takes every dev server, review server and shared
+browser with it, and restored pane shells have lost the run's environment:
+restore the services and re-source the environment before the first command in
+each pane, or an agent finds a different mesh's CLI on its `PATH`. The same goes
+for git: a resumed process may have lost the host's SSH helper, so keep the HTTPS
+push ready.
+
+**An unattended run needs an account that cannot stop mid-run.** A usage limit
+that pauses the orchestrator pauses supervision with no error on the mesh: its
+ticks are submitted and never handled. Before kickoff, compare the account's
+remaining allowance with the run's size, read each pane's status line for a limit
+notice at every tick, and decide in advance whether the run may continue on
+overage.
 
 Survive death: **commit and push first** on every respawn. **Superset**: respawn
 into the **existing** workspace (`superset agents create`), never a fresh
@@ -392,6 +540,27 @@ When the Captain wants N gated PRs to land with one approval:
 - **Re-gate the merged head.** A batch-wide review finds things the per-component
   reviews missed (this is where out-of-diff misses show up). Run lint, typecheck and
   the relevant tests on the merged code.
+- **Open the master PR before the integration ticket starts.** The batch-wide
+  review then runs while integration is being built, and its findings (in one run:
+  a cross-site request gap in a paid route, and one ticket's panel covering
+  another's controls on a phone) go to the integration worker as work items.
+- **When successive batch reviews keep finding the next bug in the same file**, stop
+  fixing one finding per round: ask the author to review the whole path for that
+  class of bug before pushing (every input against every way the data can be
+  partial). In one run three reviews each found one more problem in the same
+  route; the author then found four more itself, and the next review passed.
+- **Check the ancestry with commands, not by eye:** every gated head is an
+  ancestor (`git merge-base --is-ancestor`), and
+  `git rev-list --no-merges HEAD ^<default> ^<head1> ... ^<headN>` prints nothing.
+- **An integration ticket's file budget** counts the files it adds to the master
+  diff, not the files in its own PR: fixing how the pieces fit means editing other
+  tickets' files, which are in the master diff already.
+- **Code scanning may not run on a PR into the integration branch** (GitHub's
+  default CodeQL setup scans PRs into the default branch only). The master PR's
+  re-gate after the merge is then the code-scanning gate for the integration
+  changes.
+- **After the integration PR is merged, a fix is a new PR on a new branch**, never
+  a push to the merged branch.
 - Close the component PRs as **superseded** (`gh pr close`; their commits are in the
   batch) with a pointer comment and a "reopen if you merge individually" note, only
   after the batch is verified merge-ready.
@@ -453,6 +622,21 @@ Leave the mesh and the hosts as clean as you found them:
   deliberate manual cleanup. It never drains unread mail or kills processes in bulk.
   It lists leftover dev servers and Docker containers (set
   `AGENT_MESH_TEARDOWN_CONTAINERS` to a regex for your per-worktree containers).
+- **Retirement is one-way.** A retired id is reserved: the mesh refuses to register
+  it again. Retire a worker only when its ticket is gated and merged into the
+  integration branch (the rule in Phase 3), and give a follow-up in the same
+  worktree a new actor id. If panes are later restored with
+  their agents (a client attach or a reboot can relaunch every agent with
+  `--resume`), the roster will show the retired ids `offline` beside running
+  panes. Ask the Captain which of three he wants before you act. Ending those
+  sessions leaves the roster as it is. Registering them under new ids doubles the
+  rows, and the new ids start with no history; a run tried this and the Captain
+  did not want it. Bringing a retired id back is not a mesh command: `register`,
+  `rebind` and `unregister` all refuse an id that holds a claim. It takes an
+  operator recovery in the broker (release the retired claim and drop the
+  offline roster row; the inbox stays, so nothing is replayed), and the Captain
+  runs or approves that himself. Prepare the script and a backup and hand him the
+  command; do not edit the broker on your own.
 - **Stay registered for long-lived ids.** A `stale` id is fine; unregistering
   deletes its inbox and frees the name on an unauthenticated broker.
 - Delete the run's workspaces, panes and terminals, filtered to the **exact
