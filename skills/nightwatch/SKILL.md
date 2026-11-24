@@ -428,7 +428,6 @@ Gate **every** PR. Merge-ready means ALL of:
 - scope within the run's change policy: areas the Captain excluded (for example
   schema, auth, billing) touched only where the plan says so, and no production
   change (data edits, reruns, production jobs), which stays with an engineer.
-
 - **0 open code-scanning alerts** on the PR, and the file count within the ticket's
   budget.
 
@@ -541,6 +540,11 @@ When the Captain wants N gated PRs to land with one approval:
   review then runs while integration is being built, and its findings (in one run:
   a cross-site request gap in a paid route, and one ticket's panel covering
   another's controls on a phone) go to the integration worker as work items.
+- **When successive batch reviews keep finding the next bug in the same file**, stop
+  fixing one finding per round: ask the author to review the whole path for that
+  class of bug before pushing (every input against every way the data can be
+  partial). In one run three reviews each found one more problem in the same
+  route; the author then found four more itself, and the next review passed.
 - **Check the ancestry with commands, not by eye:** every gated head is an
   ancestor (`git merge-base --is-ancestor`), and
   `git rev-list --no-merges HEAD ^<default> ^<head1> ... ^<headN>` prints nothing.
