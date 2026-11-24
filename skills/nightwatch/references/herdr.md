@@ -106,6 +106,11 @@ on the box hosting the server, before `agent start`. An omitted or wrong
   `herdr agent start <name> --kind claude --pane <id> -- --dangerously-skip-permissions --model <model>`.
   Check the flags on the process (`pane process-info`,
   `.result.process_info.foreground_processes[]`).
+- **A restored session relaunches its agents.** After a host reboot, and when a
+  client attaches to a session whose agent panes had ended, Herdr can start each
+  pane's last agent command again with `--resume`, in a fresh shell without the
+  environment you exported and without the agent's name. Expect retired workers
+  to come back as unnamed idle agents, and check `agent list` after any attach.
 - **End an agent with `herdr agent prompt <name> "/exit"`**, then check its PID is
   gone; the pane returns to its shell and can host `claude --continue` later.
 

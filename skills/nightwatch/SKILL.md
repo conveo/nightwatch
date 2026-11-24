@@ -486,6 +486,27 @@ files and no commit gets one "push first" nudge. While you are in a turn nothing
 is delivered to you either: read ahead with `agent-mesh inbox --peek`, and end the
 turn to receive.
 
+**After a restart or a reboot, check delivery before anything else.** When an
+agent's process is replaced (a resume, a host reboot, a manager restoring its
+session), the roster can still show it `online` while `agent-mesh delivery` says
+`owner-changed`: the binding names the old process and nothing is delivered. Rebind
+with the current generation (`agent-mesh rebind --id <id> --role <role>
+--generation <generation> --dedicated`, plus `--tick 15` for an orchestrator;
+`rebind` takes no `--deliver`), acknowledging a submitted batch first, and prove a
+receipt again. A reboot also takes every dev server, review server and shared
+browser with it, and restored pane shells have lost the run's environment:
+restore the services and re-source the environment before the first command in
+each pane, or an agent finds a different mesh's CLI on its `PATH`. The same goes
+for git: a resumed process may have lost the host's SSH helper, so keep the HTTPS
+push ready.
+
+**An unattended run needs an account that cannot stop mid-run.** A usage limit
+that pauses the orchestrator pauses supervision with no error on the mesh: its
+ticks are submitted and never handled. Before kickoff, compare the account's
+remaining allowance with the run's size, read each pane's status line for a limit
+notice at every tick, and decide in advance whether the run may continue on
+overage.
+
 Survive death: **commit and push first** on every respawn. **Superset**: respawn
 into the **existing** workspace (`superset agents create`), never a fresh
 `superset workspaces create`, which resets the worktree and orphans the mesh id.
@@ -593,6 +614,12 @@ Leave the mesh and the hosts as clean as you found them:
   deliberate manual cleanup. It never drains unread mail or kills processes in bulk.
   It lists leftover dev servers and Docker containers (set
   `AGENT_MESH_TEARDOWN_CONTAINERS` to a regex for your per-worktree containers).
+- **Retirement is one-way.** A retired id is reserved: the mesh refuses to register
+  it again. Retire a worker only when its ticket is gated and merged, and give a
+  follow-up in the same worktree a new actor id. If panes are later restored with
+  their agents (a client attach or a reboot can relaunch every agent with
+  `--resume`), the roster will show the retired ids `offline` beside running
+  panes; end those sessions or register them under new ids, and say which.
 - **Stay registered for long-lived ids.** A `stale` id is fine; unregistering
   deletes its inbox and frees the name on an unauthenticated broker.
 - Delete the run's workspaces, panes and terminals, filtered to the **exact
