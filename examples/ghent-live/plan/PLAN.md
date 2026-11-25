@@ -70,10 +70,10 @@ asks the orchestrator, who updates this table for everyone.
 | Garage selection | `garage:<slug of the garage name>` | `garage:vrijdagmarkt` | T5 | T7, T9 |
 | Bike station selection | `bikes:<operator>:<station id>` (`donkey`, `bolt`, `blue-bike`) | `bikes:donkey:35010` | T6 | T7 |
 | Landmark selection | `place:<slug>` from `src/places.ts` | `place:gravensteen` | base, T8 | T7, T9 |
-| Question in the URL | `ask=<template>:<value>` | `ask=park:gravensteen`, `ask=drive:kuip~sector-zuid`, `ask=busy:now` | T7 | T9 |
+| Question in the URL | `ask=<template>:<value>` | `ask=park:gravensteen`, `ask=drive:coupure~portus-ganda`, `ask=busy:now` | T7 | T9 |
 | A new view | spread the current one: `setView({ ...getView(), sel })` | | everyone | |
 
-Slugs are lower case, ASCII, words joined by `-` (`Sint-Michiels` → `sint-michiels`).
+Slugs are lower case ASCII (accents dropped): every run of characters outside `[a-z0-9]` becomes one `-` (`Sint-Michiels` → `sint-michiels`, `Portus Ganda` → `portus-ganda`).
 
 ## File budget
 

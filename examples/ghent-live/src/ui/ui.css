@@ -1,0 +1,254 @@
+/* T8's controls: the preset bar, the day/night and layer panel, and the landmark
+   labels. Text is sized for a projector (24px and up), and every target is at least
+   48px tall for a finger. The base's src/style.css holds the shared variables. */
+
+.ui-button {
+  min-height: 52px;
+  padding: 8px 16px;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+  font: inherit;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-button[aria-pressed="true"] {
+  border-color: #ffcf5c;
+  background: #ffcf5c;
+  color: #15120a;
+}
+
+.ui-button:focus-visible,
+.ui-label:focus-visible {
+  outline: 3px solid #7fb2ff;
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .ui-button:hover {
+    border-color: rgba(255, 255, 255, 0.6);
+  }
+}
+
+.ui-presets,
+.ui-panel {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* A dock at the bottom left. Its lower edge holds the base's attribution line, which
+   is drawn on top of it and so stays readable over a bright scene. The right side is
+   the "Ask Ghent" panel's and the reviewer overlay's. */
+.ui-presets {
+  position: fixed;
+  left: 4px;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100vw - 8px);
+  padding: 8px 8px 34px;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  /* Opaque: the scene's lines must not show through the controls. */
+  background: #0b1020;
+}
+
+@media (min-width: 1000px) {
+  .ui-presets {
+    /* At least as wide as the attribution line it holds. */
+    min-width: 720px;
+    max-width: calc(100vw - 480px);
+  }
+}
+
+/* A phone held upright: one row that scrolls sideways, over the attribution, which
+   wraps onto two lines there. */
+@media (max-width: 699px) {
+  .ui-presets {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 50px;
+  }
+
+  .ui-presets .ui-button {
+    flex: none;
+  }
+}
+
+/* Left, under the title; controls.ts sets `top` from the title's box. */
+.ui-panel {
+  position: fixed;
+  left: 16px;
+  top: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: #0b1020;
+}
+
+.ui-light {
+  display: flex;
+}
+
+.ui-segment {
+  flex: 1;
+}
+
+.ui-segment:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.ui-segment:last-child {
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+}
+
+.ui-disclosure,
+.ui-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 8px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+
+.ui-disclosure::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  margin: 0 4px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 12px solid currentColor;
+  transition: transform 0.15s;
+}
+
+.ui-disclosure[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.ui-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ui-layers[hidden] {
+  display: none;
+}
+
+.ui-toggle {
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.ui-toggle::before {
+  content: "";
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 5px;
+}
+
+.ui-toggle[aria-pressed="true"] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg);
+}
+
+.ui-toggle[aria-pressed="true"]::before {
+  border-color: #ffcf5c;
+  background: #ffcf5c;
+  box-shadow: inset 0 0 0 4px #0b1020;
+}
+
+.ui-toggle[aria-pressed="false"] {
+  color: var(--muted);
+}
+
+/* Landmark labels: placed by labels.ts with transforms, every frame. */
+.ui-labels {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ui-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  min-height: 48px;
+  padding: 4px 14px;
+  border: 2px solid rgba(255, 207, 92, 0.85);
+  border-radius: 999px;
+  background: rgba(8, 12, 26, 0.88);
+  /* A warm glow around the pill and the text, in the Lichtplan's colour, so the
+     names pop against the night sky. Shadows do not change the box that the
+     zone names keep clear of. */
+  box-shadow:
+    0 0 14px rgba(255, 176, 64, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.6);
+  color: #fff6dc;
+  text-shadow: 0 0 10px rgba(255, 196, 96, 0.7);
+  font: inherit;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  will-change: transform;
+}
+
+.ui-label.is-selected {
+  border-color: #ffcf5c;
+  background: #ffcf5c;
+  box-shadow: 0 0 20px rgba(255, 196, 80, 0.85);
+  color: #15120a;
+  text-shadow: none;
+}
+
+.ui-label-dot {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  visibility: hidden;
+  border: 3px solid #0b1020;
+  border-radius: 50%;
+  background: #ffcf5c;
+  pointer-events: none;
+}
+
+.ui-stems {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ui-stems line {
+  stroke: #ffcf5c;
+  stroke-width: 3;
+  stroke-linecap: round;
+}

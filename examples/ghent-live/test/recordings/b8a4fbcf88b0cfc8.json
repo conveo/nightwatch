@@ -1,0 +1,43 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "three_towers",
+      "probability": 0.88
+    },
+    {
+      "type": "predicate",
+      "name": "eye_level",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "tower_labels",
+      "probability": 0.99
+    },
+    {
+      "type": "score",
+      "name": "stage_readability",
+      "score": 1.43,
+      "probabilities": [
+        {
+          "value": 0,
+          "label": "poor",
+          "probability": 0.08
+        },
+        {
+          "value": 1,
+          "label": "acceptable",
+          "probability": 0.41
+        },
+        {
+          "value": 2,
+          "label": "good",
+          "probability": 0.51
+        }
+      ],
+      "confidence": 0.15
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 {
+  "view": "",
   "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) centred on the Belfry, rendered in a web browser. This is the empty base app: only a ground grid and a marker are drawn so far.",
   "checks": [
     {

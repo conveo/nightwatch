@@ -1,0 +1,270 @@
+/* "Ask Ghent" (ticket T7). The panel takes the right side, clear of the title (top
+   left), the toggles (left) and the camera presets along the bottom. Every piece of
+   text is 24px or larger, for a projector. */
+
+aside#ask.ask-panel {
+  --ask-accent: #ffc857;
+  --ask-line: rgba(232, 236, 244, 0.18);
+  /* Brighter than the base's --muted: secondary lines must still read on a projector. */
+  --ask-soft: #ffffff;
+  top: 16px;
+  right: 16px;
+  /* Narrow enough that a label beside the towers on the right of the street-level
+     view still fits between them and the panel. */
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--ask-line);
+  border-radius: 12px;
+  background: #0b1020;
+  font-size: 30px;
+  line-height: 1.25;
+}
+
+aside#ask.ask-panel[hidden] {
+  display: none;
+}
+
+/* Folded (no question): only the title, as a button that opens the panel. */
+aside#ask.ask-panel[data-state="closed"] {
+  width: auto;
+  padding: 6px 12px;
+}
+
+.ask-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ask-body[hidden] {
+  display: none;
+}
+
+.ask-panel p {
+  margin: 0;
+}
+
+.ask-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ask-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--ask-accent);
+}
+
+.ask-panel button {
+  min-height: 52px;
+  border: 1px solid var(--ask-line);
+  border-radius: 10px;
+  background: rgba(232, 236, 244, 0.08);
+  color: var(--fg);
+  font: inherit;
+  font-size: 28px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ask-panel button:hover,
+.ask-panel button:focus-visible {
+  background: rgba(232, 236, 244, 0.18);
+}
+
+/* The title is the button that opens and folds the panel; it reads as the title. */
+.ask-panel .ask-toggle {
+  min-height: 48px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--ask-accent);
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.ask-panel .ask-toggle:hover,
+.ask-panel .ask-toggle:focus-visible {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.ask-clear {
+  min-width: 48px;
+  padding: 0;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.ask-clear[hidden] {
+  display: none;
+}
+
+.ask-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ask-question {
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.ask-answer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 200, 87, 0.14);
+  border-left: 4px solid var(--ask-accent);
+}
+
+.ask-headline {
+  font-size: 38px;
+  font-weight: 700;
+}
+
+.ask-pct {
+  font-size: 46px;
+  font-weight: 700;
+  color: var(--ask-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-detail,
+.ask-meta,
+.ask-hint,
+.ask-pending {
+  font-size: 28px;
+  color: var(--ask-soft);
+}
+
+.ask-notice {
+  font-size: 24px;
+  color: #ffd9a0;
+}
+
+.ask-error {
+  font-size: 28px;
+  color: #ff9b8a;
+}
+
+/* The answer opens the other options; it needs no marker of its own. */
+.ask-more-summary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ask-more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ask-more[open] .ask-options {
+  margin-top: 8px;
+}
+
+.ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each other option with a bar as long as its probability. */
+.ask-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 30px;
+  background: linear-gradient(
+    to right,
+    rgba(232, 236, 244, 0.16) calc(var(--p, 0) * 100%),
+    rgba(232, 236, 244, 0.04) calc(var(--p, 0) * 100%)
+  );
+}
+
+.ask-option-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--ask-soft);
+}
+
+.ask-form {
+  display: flex;
+  gap: 10px;
+}
+
+.ask-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 12px;
+  border: 1px solid var(--ask-line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--fg);
+  font: inherit;
+  font-size: 28px;
+}
+
+.ask-input::placeholder {
+  color: var(--ask-soft);
+}
+
+.ask-submit {
+  padding: 0 18px;
+  font-weight: 600;
+}
+
+/* On a phone the panel folds to a small button beside the title. Open, it fills the
+   space between the Day/Night and layer controls and the preset bar (panel.ts sets
+   its top and height), so it never covers either. */
+@media (max-width: 760px) {
+  aside#ask.ask-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-height: 50vh;
+    padding: 14px 16px;
+    font-size: 24px;
+  }
+
+  aside#ask.ask-panel[data-state="closed"] {
+    top: 16px;
+    left: auto;
+    padding: 4px 10px;
+  }
+
+  .ask-panel .ask-toggle {
+    font-size: 24px;
+  }
+
+  .ask-title,
+  .ask-question {
+    font-size: 26px;
+  }
+
+  .ask-headline {
+    font-size: 28px;
+  }
+
+  .ask-pct {
+    font-size: 32px;
+  }
+}

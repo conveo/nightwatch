@@ -1,0 +1,36 @@
+{
+  "view": "#cam=0,2200,1&tgt=0,0,0",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) seen from straight above, rendered in a web browser. The layer under test draws the city's traffic circulation plan on the ground: its zones and the points where cars cannot pass from one zone to the next.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "zones_surround_centre",
+      "instructions": "Coloured zones surround the centre.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "distinct_middle_zone",
+      "instructions": "A distinct zone lies in the middle.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "red_posts_on_borders",
+      "instructions": "Small red posts stand on zone borders.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "neighbours_differ",
+      "instructions": "Zones that touch each other have different colours.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "zone_names",
+      "instructions": "Several zones are labelled with their name in large, readable text.",
+      "min": 0.8
+    }
+  ]
+}

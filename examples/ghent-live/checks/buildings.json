@@ -1,0 +1,24 @@
+{
+  "view": "#sel=bldg:3152587",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) centred on the Belfry, rendered in a web browser from the default camera, looking down at the centre from the south-west. A red ring on the ground marks the Belfry, and the buildings around it are drawn from the city's building footprints at their measured heights.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "dense_buildings",
+      "instructions": "Dense blocks of 3D buildings of varying heights fill the centre of the view.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "tower_at_ring",
+      "instructions": "A tall tower stands at the red ring on the ground, rising clearly above the buildings around it.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "one_building_highlighted",
+      "instructions": "One building is highlighted: it is drawn in a bright colour that no other building in the view has.",
+      "min": 0.8
+    }
+  ]
+}

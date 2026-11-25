@@ -1,0 +1,20 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "three_towers_lit",
+      "probability": 0.99
+    },
+    {
+      "type": "predicate",
+      "name": "panel_answers_parking",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "tower_labels_beside_panel",
+      "probability": 1
+    }
+  ]
+}

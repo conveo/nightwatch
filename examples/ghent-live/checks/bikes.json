@@ -1,0 +1,30 @@
+{
+  "view": "#cam=-230,110,370&tgt=0,0,-20",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) around the Belfry, rendered in a web browser from sample data. A red ring with a thin red beam marks the Belfry. The ground is still a plain placeholder grid: streets, buildings and water come from other layers that are not drawn here. The layer under test is the shared-bike stations.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "bike_bars",
+      "instructions": "Thin vertical bars stand on the ground in two or more clearly different colours.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "bars_along_streets",
+      "instructions": "Thin vertical bars in two or more colours stand along the streets. The streets themselves are not drawn here, so judge by the bars: they stand in rows and lines that bend and branch like streets, not in a regular grid or in one blob.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "bar_heights",
+      "instructions": "The bars have different heights: most are short stubs, and some stand clearly taller.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "bars_thin",
+      "instructions": "Every bar is a thin post, several times taller than it is wide; none is a wide block or a thick column.",
+      "min": 0.8
+    }
+  ]
+}

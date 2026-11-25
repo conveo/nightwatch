@@ -6,10 +6,11 @@ circulation plan's sectors and its car-free core, the Lichtplan lighting the tow
 parking garages and shared bikes with live availability, and an "ask Ghent" panel
 that answers typed questions about the city's current state.
 
-This folder starts as a **base**: the app shell, the view state in the URL, one empty
-file per layer, and the checks every worker uses to verify its own ticket. The plan
-the fleet builds from is [plan/PLAN.md](plan/PLAN.md). It has the same shape as
-[nyc-live](../nyc-live/), the example built for an earlier run.
+It started as a **base** (the app shell, the view state in the URL, one empty file per
+layer and the checks every worker uses) and was built overnight from the tickets in
+[plan/PLAN.md](plan/PLAN.md), one layer per ticket. It has the same shape as
+[nyc-live](../nyc-live/), the example built for an earlier run. The morning test plan
+is [plan/review-plan.json](plan/review-plan.json) (see "Review it").
 
 ## Run it
 
@@ -65,28 +66,83 @@ runs a real screenshot's real answers in CI. A recording is stored under a hash 
 whole request, screenshot included, so a changed screenshot needs a new recording. A
 visual check costs about 2,000 input tokens, a fraction of a cent.
 
-The key is read on the server side only: by `check:visual` and, once the "ask Ghent"
-panel exists, by the dev server's `/api/ask`. It never reaches the browser.
+The key is read on the server side only, by `check:visual` and by the dev server's
+`/api/ask`. It never reaches the browser.
+
+`window.__ghentLive.stats()` in the browser console reports the last frame's draw
+calls and triangles and the GPU objects held. With every layer on, the default view
+draws about 70 calls and 50,000 triangles (63,000 with the live bike feeds), and the
+page holds about 20 MB of JavaScript heap.
+
+## Ask Ghent
+
+The panel on the right asks the dev server's `/api/ask`, which turns the question and
+the city's current state into one Decisions API request. With no question the panel
+folds to a small **Ask Ghent** button; on a phone it opens between the controls on the
+left and the preset bar. In fixture mode the city state is the committed sample
+([server/city-state-fixture.ts](server/city-state-fixture.ts)), so the recorded
+answers in [server/ask-recordings.json](server/ask-recordings.json) replay without a
+key. In live and recorded mode it comes from
+[server/city-state-live.ts](server/city-state-live.ts): the parking garages (the same
+data as `/api/parking`), the shared-bike stations (`/api/bikes`), the circulation
+plan's sector names and the places in [src/places.ts](src/places.ts). Bolt's
+availability is left out when the feed's own report time is more than an hour old,
+and the answer says so.
+
+`/api/ask` answers only JSON posts (`Content-Type: application/json`) whose `Origin`
+is the app's own or a host in `GHENT_LIVE_ALLOWED_HOSTS`, so another website cannot
+spend the key's budget; a request with no `Origin` (curl, a script) is accepted.
 
 ## Review it
 
 The [reviewer overlay](../../reviewer-overlay/) lets a person pin notes, with a
-screenshot, on the running app; each note reaches an agent's mesh inbox. Start the
-overlay server with every origin the app is opened from, then point the dev server
-at it:
+screenshot, on the running app; each note reaches an agent's mesh inbox. Two
+commands, from the repository root: start the overlay server with every origin the
+app is opened from and the mesh id of the agent that reads the notes (the one
+running `/human-review`; the overlay publishes with the `agent-mesh` CLI on your
+`PATH`), then point the dev server at it:
 
 ```bash
 pnpm overlay --port 4858 --origin http://127.0.0.1:5280 --target <reviewer agent id> \
-  --plan "$PWD/examples/ghent-live/plan/review-plan.json"     # from the repository root
+  --plan "$PWD/examples/ghent-live/plan/review-plan.json"
 GHENT_LIVE_OVERLAY=http://127.0.0.1:4858 pnpm --dir examples/ghent-live dev
 ```
 
-The dev server adds the overlay's script to the page and forwards the script and
-`/api/review` on the app's own origin, so the browser only talks to the app. That
-also works through a proxy such as `tailscale serve` (add the proxy's origin with
-another `--origin`, and its host to `GHENT_LIVE_ALLOWED_HOSTS`). The overlay never
-enters a production build. Each note carries the page URL, whose hash is the exact
-view. Ticket T10 in the plan proves this end to end and completes this section.
+Open http://127.0.0.1:5280, click **Reviewer**, then **Add comment**, and share the
+tab when the browser asks; click the spot, write the note and send it. The dev
+server adds the overlay's script to the page and forwards the script and
+`/api/review` on the app's own origin, so the browser only talks to the app. Each
+note carries the page URL, whose hash is the exact view, and a PNG of the tab with
+the numbered pin drawn on it. The overlay never enters a production build.
+
+Through a proxy such as `tailscale serve`, add the proxy's origin with a second
+`--origin`, and its host name to `GHENT_LIVE_ALLOWED_HOSTS`:
+
+```bash
+pnpm overlay --port 4858 --origin http://127.0.0.1:5280 --origin https://<your proxy host> \
+  --target <reviewer agent id> --plan "$PWD/examples/ghent-live/plan/review-plan.json"
+GHENT_LIVE_OVERLAY=http://127.0.0.1:4858 GHENT_LIVE_ALLOWED_HOSTS=<your proxy host> \
+  pnpm --dir examples/ghent-live dev
+```
+
+The proxy must serve https: a browser shares a tab only from a secure context
+(`https://`, or `localhost` and `127.0.0.1`).
+
+[scripts/review-e2e.ts](scripts/review-e2e.ts) proves all of this end to end. With a
+throwaway mesh of its own (a Redis container and a daemon, never a mesh already
+running), the overlay server, a dev server and a short-lived headless Chrome, it
+reviews the default view at night with the Belfry selected, once on the app's own
+origin and once through a proxy's host name: it drops a pin on the red ring, sends a
+note, and checks that the note reaches the reviewer's inbox with the comment, a URL
+whose hash is the view, and a screenshot of the scene with the pin. Then
+`check:visual` runs [checks/review-note.json](checks/review-note.json) on that
+screenshot. It needs Docker, the repository's root dependencies
+(`pnpm install --frozen-lockfile` at the root) and a key for `check:visual`:
+
+```bash
+node scripts/review-e2e.ts --env-file <file with OPENAI_API_KEY>    # in examples/ghent-live
+CHROME_FLAGS=--no-sandbox node scripts/review-e2e.ts --env-file <file>    # where Chrome's sandbox cannot start
+```
 
 ## Settings
 
@@ -95,9 +151,9 @@ view. Ticket T10 in the plan proves this end to end and completes this section.
 | `GHENT_LIVE_PORT` | `5280` | Dev server port (preview uses the next one). Give each worker its own. |
 | `GHENT_LIVE_CDP` | none | A shared Chrome's DevTools URL, from `pnpm browser`. |
 | `GHENT_LIVE_CDP_PORT` | `9343` | Port for `pnpm browser`. |
-| `GHENT_LIVE_ALLOWED_HOSTS` | none | Extra `Host` names the dev server accepts, comma separated, for a proxy such as `tailscale serve`. The server listens on 127.0.0.1 only. |
+| `GHENT_LIVE_ALLOWED_HOSTS` | none | Extra `Host` names the dev server accepts, comma separated, for a proxy such as `tailscale serve`; `/api/ask` accepts them as an `Origin` too. The server listens on 127.0.0.1 only. |
 | `CHROME` | auto | A Chrome or Chromium binary, if the search does not find one. |
-| `OPENAI_API_KEY` | none | For `check:visual` and `/api/ask`. |
+| `OPENAI_API_KEY` | none | For `check:visual` and `/api/ask` (without it, `/api/ask` replays its recorded answers). |
 | `GHENT_LIVE_OVERLAY` | none | The reviewer overlay's server (`http://127.0.0.1:4858`). The dev server then adds the overlay to the page and forwards it on the app's own origin. |
 
 ## Data

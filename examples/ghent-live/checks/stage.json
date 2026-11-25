@@ -1,0 +1,24 @@
+{
+  "view": "#cam=-300,14,-29&tgt=-3.7,40.1,10.1&mode=fixture&light=night&ask=park:gravensteen",
+  "context": "A screenshot of ghent-live, a 3D map of the historic centre of Ghent (Belgium) rendered in a web browser at night, shown on a projector during a talk. The camera stands at eye height on a bridge over the river Leie (the Sint-Michielsbrug) and looks east into the city. The URL asks the 'Ask Ghent' panel where to park to reach the Gravensteen, a castle in the centre.",
+  "checks": [
+    {
+      "type": "predicate",
+      "name": "three_towers_lit",
+      "instructions": "The three towers are lit.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "panel_answers_parking",
+      "instructions": "The panel answers a parking question.",
+      "min": 0.8
+    },
+    {
+      "type": "predicate",
+      "name": "tower_labels_beside_panel",
+      "instructions": "Name labels 'Sint-Niklaas', 'Belfort' and 'Sint-Baafs' all show on the scene, none of them hidden behind the panel.",
+      "min": 0.8
+    }
+  ]
+}

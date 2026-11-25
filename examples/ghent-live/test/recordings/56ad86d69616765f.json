@@ -1,0 +1,43 @@
+{
+  "model": "gpt-6-luna",
+  "answers": [
+    {
+      "type": "predicate",
+      "name": "panel_answer",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "answer_names_garage",
+      "probability": 1
+    },
+    {
+      "type": "predicate",
+      "name": "title_clear",
+      "probability": 1
+    },
+    {
+      "type": "score",
+      "name": "panel_readability",
+      "score": 1.74,
+      "probabilities": [
+        {
+          "value": 0,
+          "label": "poor",
+          "probability": 0.01
+        },
+        {
+          "value": 1,
+          "label": "acceptable",
+          "probability": 0.24
+        },
+        {
+          "value": 2,
+          "label": "good",
+          "probability": 0.75
+        }
+      ],
+      "confidence": 0.61
+    }
+  ]
+}
