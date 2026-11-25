@@ -196,10 +196,17 @@
   visibility: hidden;
   min-height: 48px;
   padding: 4px 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(255, 207, 92, 0.85);
   border-radius: 999px;
   background: rgba(8, 12, 26, 0.88);
-  color: #fff;
+  /* A warm glow around the pill and the text, in the Lichtplan's colour, so the
+     names pop against the night sky. Shadows do not change the box that the
+     zone names keep clear of. */
+  box-shadow:
+    0 0 14px rgba(255, 176, 64, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.6);
+  color: #fff6dc;
+  text-shadow: 0 0 10px rgba(255, 196, 96, 0.7);
   font: inherit;
   font-size: 26px;
   font-weight: 700;
@@ -213,7 +220,10 @@
 
 .ui-label.is-selected {
   border-color: #ffcf5c;
-  color: #ffcf5c;
+  background: #ffcf5c;
+  box-shadow: 0 0 20px rgba(255, 196, 80, 0.85);
+  color: #15120a;
+  text-shadow: none;
 }
 
 .ui-label-dot {
